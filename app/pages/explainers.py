@@ -3,11 +3,11 @@ can't hold on their own.
 
 Facebook's Services tab and Featured tiles don't support a custom link or an
 embedded video per item (confirmed against the Graph API and the Page UI
-directly - see project notes). The fix here is a small set of our own pages,
-one per item the client asked for, each with a placeholder video slot ready
-to swap for the real file once it's supplied ("we will work on content
-side"). Facebook elements that only support a single destination link (the
-Website field, a CTA button, a Featured tile) point at one of these.
+directly - see project notes). The fix is a small set of our own pages, one
+per item the client asked for, each wired to a real demo video as a
+proof-of-concept - every DEMO_VIDEO_URL below is a placeholder clip ("we'll
+switch it out with our own"), clearly labelled as a demo in the UI so it's
+never mistaken for real content.
 
 Not a separate project: this is served from the same FastAPI app as the
 Messenger webhook, so it ships on whatever permanent domain that ends up
@@ -26,91 +26,114 @@ router = APIRouter()
 BRAND_NAME = "Elite Homes USA"
 BRAND_TAGLINE = "Your Home, Our Expertise, Elite Results"
 BRAND_PHONE = "[PHONE]"
+BRAND_ADDRESS = "[ADDRESS - provided once confirmed]"
+BUSINESS_HOURS = "9am - 5pm"
 FACEBOOK_URL = "https://www.facebook.com/profile.php?id=1005218406001595"
+
+# Placeholder POC clip (CC0, hosted by MDN) used everywhere a "demo video of
+# your choice" was asked for. Swap per-item once real footage exists.
+DEMO_VIDEO_URL = "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4"
+
+# Booking link - set once a tool (Calendly recommended) is created. Until
+# then /schedule falls back to a Message Us button.
+BOOKING_URL: str | None = None
 
 
 @dataclass
 class Explainer:
     slug: str
     title: str
-    # Shown while no video has been supplied yet - keeps the page useful on
-    # its own, not just an empty placeholder.
     fallback_text: str
-    video_url: str | None = None  # set once the client supplies a file/link
+    duration_label: str  # e.g. "20 sec" - shown next to the Click Video link
+    video_url: str | None = DEMO_VIDEO_URL
 
-
-HOW_IT_WORKS = Explainer(
-    "how-it-works",
-    "How It Works",
-    "1. Schedule your free assessment - pick a time that works for you. "
-    "2. Get a fair cash offer - we buy as-is, no repairs or cleaning. "
-    "3. Close on your date - you pick the timeline, we handle the rest.",
-)
 
 MEET_THE_TEAM = Explainer(
     "meet-the-team",
     "Meet The Team",
     "The people behind Elite Homes USA - local, real, and here to help "
     "Jacksonville homeowners move forward.",
+    "45-60 sec",
 )
 
+# No hyperlink per the client's latest direction - stays as the static
+# graphic they already designed (Logos/photo_2026-10-05_00-04-13.jpg), not a
+# linked video page. Kept here only so the route doesn't 404 if referenced.
+HOW_IT_WORKS = Explainer(
+    "how-it-works",
+    "How It Works",
+    "1. Schedule your free assessment - pick a time that works for you. "
+    "2. Get a fair cash offer - we buy as-is, no repairs or cleaning. "
+    "3. Close on your date - you pick the timeline, we handle the rest.",
+    "",
+    video_url=None,
+)
+
+# Also no hyperlink - plain text per the client's latest direction.
 WHERE_WE_BUY = Explainer(
     "where-we-buy",
     "Where We Buy",
-    "We buy throughout Jacksonville, FL and the surrounding counties.",
+    "Jacksonville and surrounding counties.",
+    "",
+    video_url=None,
 )
 
+# Order and per-question durations match the client's "Common Questions"
+# mockup exactly (total 2:15, under the 3-minute cap).
 FAQ: list[Explainer] = [
     Explainer(
         "what-is-free-assessment", "What is the free assessment?",
-        "We look at your house and its condition, then give you a cash offer. No cost, no obligation.",
+        "We review your home and discuss a cash offer.", "20 sec",
     ),
     Explainer(
         "how-do-i-schedule", "How do I schedule it?",
-        f"Tap the booking button on our page and pick a time, or call {BRAND_PHONE}.",
+        "Message our team to arrange a time.", "15 sec",
     ),
     Explainer(
         "do-i-have-to-fix-anything", "Do I have to fix anything?",
-        "No. We buy houses as-is. No repairs, no cleaning, no showings.",
+        "No, you do not have to fix anything. We buy houses as-is.", "15 sec",
     ),
     Explainer(
         "do-i-pay-commissions", "Do I pay commissions?",
-        "No agent commissions. We buy direct.",
+        "Ask us about commissions and closing costs.", "20 sec",
     ),
     Explainer(
         "how-fast-can-you-close", "How fast can you close?",
-        "As soon as you need, or on whatever date works for you.",
+        "We work with you on your closing timeline.", "15 sec",
     ),
     Explainer(
         "what-houses-do-you-buy", "What houses do you buy?",
-        "Any condition, any situation: inherited, needs repairs, or you're just ready to move on.",
+        "Inherited homes, homes needing repairs, and more.", "20 sec",
     ),
     Explainer(
         "where-do-you-buy", "Where do you buy?",
-        "We buy throughout Jacksonville, FL and the surrounding counties.",
+        "Jacksonville, FL and surrounding counties.", "15 sec",
     ),
     Explainer(
         "do-i-have-to-accept", "Do I have to accept?",
-        "Never. The assessment and offer are free, and the choice is always yours.",
+        "No cost. No obligation. The choice is yours.", "15 sec",
     ),
 ]
 
+# Services tab stays exactly as it is - plain text, no hyperlinks, per the
+# client's latest direction. Kept here for the (unlinked) individual pages
+# only, in case they're wanted later.
 SERVICES: list[Explainer] = [
-    Explainer("sell-as-is", "Sell As-Is", "No repairs, no cleanout, no showings. Sell your house exactly as it is."),
-    Explainer("inherited-probate", "Inherited & Probate", "We work with the family and the title company to make an inherited property simple to sell."),
-    Explainer("behind-on-payments", "Behind On Payments", "Options before foreclosure - we can move quickly to help."),
-    Explainer("divorce-relocation", "Divorce Or Relocation", "A quick, simple sale on your timeline."),
-    Explainer("tired-landlords", "Tired Landlords", "We buy rentals, tenants in place is okay."),
-    Explainer("code-violations-liens", "Code Violations & Liens", "We handle the hard ones - violations and liens included."),
+    Explainer("sell-as-is", "Sell As-Is", "No repairs, no cleanout, no showings.", "", video_url=None),
+    Explainer("inherited-probate", "Inherited & Probate", "We work with the family and the title company.", "", video_url=None),
+    Explainer("behind-on-payments", "Behind On Payments", "Options before foreclosure.", "", video_url=None),
+    Explainer("divorce-relocation", "Divorce Or Relocation", "A quick, simple sale on your timeline.", "", video_url=None),
+    Explainer("tired-landlords", "Tired Landlords", "We buy rentals, tenants in place is okay.", "", video_url=None),
+    Explainer("code-violations-liens", "Code Violations & Liens", "We handle the hard ones.", "", video_url=None),
 ]
 
 _ALL: dict[str, Explainer] = {
-    e.slug: e
-    for e in [HOW_IT_WORKS, MEET_THE_TEAM, WHERE_WE_BUY, *FAQ, *SERVICES]
+    e.slug: e for e in [HOW_IT_WORKS, MEET_THE_TEAM, WHERE_WE_BUY, *FAQ, *SERVICES]
 }
 
 
-def _page(title: str, body: str) -> str:
+def _page(title: str, body: str, wide: bool = False) -> str:
+    max_width = "1040px" if wide else "640px"
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -124,24 +147,55 @@ def _page(title: str, body: str) -> str:
     margin: 0; background: var(--bg); color: var(--ink);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   }}
-  .wrap {{ max-width: 640px; margin: 0 auto; padding: 24px 16px 48px; }}
-  .brand {{ display:flex; align-items:center; gap:10px; margin-bottom: 28px; }}
+  .wrap {{ max-width: {max_width}; margin: 0 auto; padding: 24px 16px 48px; }}
+  .brand {{ display:flex; align-items:center; gap:10px; margin-bottom: 20px; }}
   .brand img {{ width: 40px; height: 40px; border-radius: 8px; object-fit: cover; }}
   .brand span {{ font-weight: 800; font-size: 18px; letter-spacing: 0.3px; }}
-  h1 {{ font-size: 28px; margin: 0 0 16px; }}
+  h1 {{ font-size: 32px; margin: 0 0 4px; font-weight: 800; }}
+  h1 + .rule {{ width:110px; height:4px; border-radius:2px; margin: 10px 0 22px;
+    background: linear-gradient(90deg, #1ec6e8, var(--blue)); }}
   .video {{
-    aspect-ratio: 16/9; border-radius: 14px; background: #1b1b1b;
+    aspect-ratio: 16/9; border-radius: 14px; background: #111;
     display:flex; align-items:center; justify-content:center; color:#aaa;
-    font-size: 14px; margin-bottom: 20px; text-align:center; padding: 16px;
+    font-size: 14px; margin-bottom: 14px; text-align:center; padding: 16px;
+    position: relative; overflow:hidden;
   }}
   .video .play {{ font-size: 40px; display:block; margin-bottom:8px; }}
+  .demo-badge {{
+    position:absolute; top:10px; right:10px; background:var(--red); color:#fff;
+    font-size:11px; font-weight:800; letter-spacing:0.5px; padding:4px 8px;
+    border-radius:6px; z-index:2;
+  }}
   p.copy {{ font-size: 16px; line-height: 1.55; color:#333; }}
   .cta {{
-    display:inline-block; margin-top: 24px; background: var(--red); color:#fff;
-    text-decoration:none; font-weight:700; padding: 14px 22px; border-radius: 10px;
+    display:inline-block; margin-top: 16px; background: var(--red); color:#fff;
+    text-decoration:none; font-weight:700; padding: 16px 22px; border-radius: 10px;
+    width: 100%; text-align:center; font-size: 17px;
   }}
+  .cta span.arrow {{ float:right; }}
   footer {{ margin-top: 40px; font-size: 13px; color:#666; border-top:1px solid #ddd; padding-top:16px; }}
   footer a {{ color: var(--blue); text-decoration:none; }}
+  .hours {{ font-size: 13px; color:#555; margin-top:6px; }}
+
+  .grid {{ display:grid; grid-template-columns: 1fr 1fr; gap: 16px; }}
+  @media (max-width: 560px) {{ .grid {{ grid-template-columns: 1fr; }} }}
+  .card {{
+    background:#fff; border-radius:14px; padding:16px; text-decoration:none; color:inherit;
+    display:block; box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+  }}
+  .card h3 {{ color: var(--blue); font-size:17px; margin:0 0 6px; }}
+  .card .clicklink {{ color: var(--red); font-weight:700; font-size:14px; display:flex; align-items:center; gap:6px; margin-bottom:10px; }}
+  .card .clicklink .dot {{ width:22px;height:22px;border-radius:50%;background:var(--red);color:#fff;
+    display:inline-flex;align-items:center;justify-content:center;font-size:11px; }}
+  .card .thumb {{
+    aspect-ratio:16/9; border-radius:10px; background:#1b1b1b; position:relative;
+    display:flex; align-items:center; justify-content:center; margin-bottom:10px;
+  }}
+  .card .thumb .playcircle {{
+    width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,0.92);
+    display:flex;align-items:center;justify-content:center;color:var(--ink);font-size:16px;
+  }}
+  .card .caption {{ font-size:14px; color:#444; }}
 </style>
 </head>
 <body>
@@ -152,8 +206,9 @@ def _page(title: str, body: str) -> str:
   </div>
   {body}
   <footer>
-    {BRAND_TAGLINE} &middot; {BRAND_PHONE}<br>
-    <a href="{FACEBOOK_URL}">Message us on Facebook</a>
+    {BRAND_TAGLINE} &middot; {BRAND_PHONE}
+    <div class="hours">Hours: {BUSINESS_HOURS} &middot; {BRAND_ADDRESS}</div>
+    <div style="margin-top:8px;"><a href="{FACEBOOK_URL}">Message us on Facebook</a></div>
   </footer>
 </div>
 </body>
@@ -163,16 +218,15 @@ def _page(title: str, body: str) -> str:
 def _render_explainer(e: Explainer) -> str:
     if e.video_url:
         video_block = (
-            f'<div class="video" style="background:#000;">'
+            '<div class="video" style="background:#000;">'
+            '<span class="demo-badge">DEMO</span>'
             f'<video controls style="width:100%;height:100%;border-radius:14px;" src="{e.video_url}"></video>'
-            f"</div>"
+            "</div>"
         )
     else:
-        video_block = (
-            '<div class="video"><span><span class="play">&#9658;</span>'
-            "Video coming soon</span></div>"
-        )
-    body = f"<h1>{e.title}</h1>{video_block}<p class='copy'>{e.fallback_text}</p>"
+        video_block = ""
+    duration = f'<p style="color:#888;font-size:13px;margin-top:-8px;">{e.duration_label} demo clip</p>' if e.duration_label else ""
+    body = f"<h1>{e.title}</h1><div class='rule'></div>{video_block}{duration}<p class='copy'>{e.fallback_text}</p>"
     return _page(e.title, body)
 
 
@@ -184,14 +238,40 @@ async def explainer_page(slug: str) -> str:
     return _render_explainer(e)
 
 
+@router.get("/common-questions", response_class=HTMLResponse)
+async def common_questions_page() -> str:
+    """Matches the client's 'Common Questions - Educate Yourself in Under 3
+    Min' layout: an 8-card grid, each linking to its own video page."""
+    cards = "".join(
+        f"""<a class="card" href="/explainers/{e.slug}">
+          <h3>{e.title}</h3>
+          <div class="clicklink"><span class="dot">&#9658;</span>Click video &middot; {e.duration_label}</div>
+          <div class="thumb"><span class="demo-badge">DEMO</span><div class="playcircle">&#9658;</div></div>
+          <div class="caption">{e.fallback_text}</div>
+        </a>"""
+        for e in FAQ
+    )
+    total_seconds = sum(int(e.duration_label.split()[0]) for e in FAQ)
+    body = f"""
+    <h1>Common Questions</h1>
+    <div class="rule"></div>
+    <p class="copy" style="margin-top:-10px;color:#888;font-size:14px;">
+      Educate yourself in under 3 min &middot; total {total_seconds // 60}:{total_seconds % 60:02d}
+    </p>
+    <div class="grid">{cards}</div>
+    <a class="cta" href="/schedule" style="margin-top:24px;">Schedule Your Free Assessment <span class="arrow">&rarr;</span></a>
+    """
+    return _page("Common Questions", body, wide=True)
+
+
 @router.get("/schedule", response_class=HTMLResponse)
 async def schedule_page() -> str:
-    # Placeholder until a booking tool (e.g. Calendly) is chosen - see
-    # project notes. Swap this for a redirect to the real booking URL then.
+    if BOOKING_URL:
+        return _page("Redirecting...", f'<meta http-equiv="refresh" content="0;url={BOOKING_URL}">')
     body = (
-        "<h1>Schedule Your Free Assessment</h1>"
+        "<h1>Schedule Your Free Assessment</h1><div class='rule'></div>"
         "<p class='copy'>Online booking is being set up. "
-        f"In the meantime, call or message us and we'll find a time that works.</p>"
+        "In the meantime, call or message us and we'll find a time that works.</p>"
         f"<a class='cta' href='{FACEBOOK_URL}'>Message Us</a>"
     )
     return _page("Schedule", body)
@@ -208,16 +288,17 @@ async def home_page() -> str:
         )
 
     body = f"""
-    <h1>{BRAND_NAME}</h1>
+    <h1>{BRAND_NAME}</h1><div class="rule"></div>
     <p class="copy">We buy houses in Jacksonville, FL - any condition, cash offer.</p>
-    <a class="cta" href="/schedule">Schedule Your Free Assessment</a>
-    <h2 style="margin-top:32px;font-size:18px;">How It Works</h2>
-    {_row([HOW_IT_WORKS])}
+    <a class="cta" href="/schedule">Schedule Your Free Assessment <span class="arrow">&rarr;</span></a>
+    <h2 style="margin-top:32px;font-size:18px;">Meet The Team</h2>
+    {_row([MEET_THE_TEAM])}
     <h2 style="margin-top:24px;font-size:18px;">Common Questions</h2>
-    {_row(FAQ)}
-    <h2 style="margin-top:24px;font-size:18px;">What We Help With</h2>
-    {_row(SERVICES)}
-    <h2 style="margin-top:24px;font-size:18px;">More</h2>
-    {_row([MEET_THE_TEAM, WHERE_WE_BUY])}
+    <div style="padding:12px 0;border-bottom:1px solid #ddd;">
+      <a style="color:#1f4e8c;text-decoration:none;font-weight:600;" href="/common-questions">
+        All 8 questions - under 3 min &rarr;</a>
+    </div>
+    <h2 style="margin-top:24px;font-size:18px;">Where We Buy</h2>
+    <p class="copy">{WHERE_WE_BUY.fallback_text}</p>
     """
     return _page("Home", body)
