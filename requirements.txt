@@ -1,0 +1,25 @@
+# --- Web / API ---
+fastapi>=0.115
+uvicorn[standard]>=0.30
+
+# --- Persistence ---
+SQLAlchemy>=2.0.44  # 2.0.44+ required for Python 3.14 compatibility
+
+# --- Scheduling ---
+APScheduler>=3.10
+
+# --- HTTP / Graph API ---
+requests>=2.32
+
+# --- Browser automation (outreach module) ---
+playwright>=1.47
+
+# --- Dashboard ---
+streamlit>=1.38
+pandas>=2.2
+
+# --- Config ---
+python-dotenv>=1.0
+
+# --- Tests ---
+pytest>=8.0

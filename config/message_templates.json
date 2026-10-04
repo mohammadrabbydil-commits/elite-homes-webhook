@@ -1,0 +1,151 @@
+{
+  "_comment": "Outreach message templates, keyed by segment. Placeholders: {name}, {first_name}, {source_group}, {city}. Keep these conversational and always identify the sender - unsolicited bulk messaging is both against Meta's Terms and the fastest way to get an account restricted.",
+  "defaults": {
+    "city": "Jacksonville",
+    "business_name": "Elite Homes USA Group"
+  },
+  "segments": {
+    "homeowner": {
+      "keywords": [
+        "selling",
+        "sell my house",
+        "vacant",
+        "inherited",
+        "landlord",
+        "tired landlord",
+        "needs repairs",
+        "as-is"
+      ],
+      "templates": [
+        "Hi {first_name} - I saw your post in {source_group}. I work with {business_name} here in {city} and we buy properties as-is, including ones that need repairs or have been sitting vacant. If you're thinking about selling, I'd be glad to talk. If not, no worries at all.",
+        "Hi {first_name} - I'm with {business_name} in {city}. We work with owners selling as-is, vacant, or tenant-occupied properties. Happy to give you a no-obligation number on yours if that would be useful."
+      ]
+    },
+    "buyer": {
+      "keywords": [
+        "looking to buy",
+        "investor",
+        "cash buyer",
+        "rental",
+        "BRRRR",
+        "fix and flip",
+        "buy box"
+      ],
+      "templates": [
+        "Hi {first_name} - I noticed you're buying in the {city} area. I'm with {business_name} and we regularly have off-market properties come across our desk. If you'd like, tell me your buy box and I'll send over anything that fits.",
+        "Hi {first_name} - saw your post in {source_group}. {business_name} works {city} off-market deals and I'm building out our buyer list. What areas and price range are you targeting?"
+      ]
+    },
+    "partner": {
+      "keywords": [
+        "under contract",
+        "wholesaler",
+        "JV",
+        "assignment",
+        "dispo",
+        "agent",
+        "pocket listing"
+      ],
+      "templates": [
+        "Hi {first_name} - I'm with {business_name} in {city}. We work with wholesalers and agents on local deals and are always open to JV opportunities. If you have anything under contract right now, I'd be happy to take a look.",
+        "Hi {first_name} - saw your post in {source_group}. {business_name} is active in {city} and we partner with wholesalers and agents on dispo. Feel free to send anything you're working on my way."
+      ]
+    }
+  },
+  "follow_ups": {
+    "no_response_after_days": 5,
+    "max_follow_ups": 1,
+    "template": "Hi {first_name} - just following up on my note from last week. If the timing isn't right, no problem at all and I won't reach out again. Thanks for your time."
+  },
+  "auto_reply": {
+    "_comment": "Replies to people who message the Page FIRST (Meta-sanctioned, 24h window). Several variants per case so consecutive leads never see identical text. Placeholders: {first_name}, {business_name}, {city}.",
+    "business_name": "Elite Homes USA Group",
+    "city": "Jacksonville",
+    "business_hours": {
+      "sell": [
+        "Hi {first_name}, thanks for reaching out! Happy to take a look. What's the property address, and roughly what kind of shape is it in?",
+        "Hey {first_name}, appreciate you messaging us. Can you send over the address and let me know when you're hoping to sell?",
+        "Hi {first_name}! Yes, we're buying in {city} right now. What's the address, and is anyone living in it currently?"
+      ],
+      "buy": [
+        "Hi {first_name}, thanks for reaching out. Let me get someone from the team to follow up with you on this shortly.",
+        "Hey {first_name}, appreciate the message. Someone will get back to you on this shortly."
+      ],
+      "partner": [
+        "Hi {first_name}, thanks for reaching out. Let me pass this to the team and someone will follow up with you shortly.",
+        "Hey {first_name}, appreciate you reaching out. Someone will be in touch shortly."
+      ],
+      "default": [
+        "Hi {first_name}, thanks for reaching out! What can we help you with?",
+        "Hey {first_name}, appreciate the message. What's going on, how can we help?"
+      ]
+    },
+    "after_hours": {
+      "sell": [
+        "Hi {first_name}, thanks for reaching out! Just seeing this. Send over the property address and I'll get back to you first thing in the morning.",
+        "Hey {first_name}, appreciate the message. It's late here, but send me the address and I'll follow up with you in the morning."
+      ],
+      "default": [
+        "Hi {first_name}, thanks for reaching out! I'll get back to you first thing in the morning.",
+        "Hey {first_name}, got your message. I'll follow up with you in the morning."
+      ]
+    }
+  },
+  "seller_flow": {
+    "_comment": "Multi-step question intake for SELL-intent conversations. Replaces the single-line auto_reply.sell templates for that intent. NEVER add a dollar figure or a specific offer anywhere here - the flow collects information, it does not negotiate.",
+    "business_hours": {
+      "greeting": "Hi {first_name}, thanks for reaching out about selling! I just need a few quick details and I'll pass this straight to our acquisitions team. What's the property address?"
+    },
+    "after_hours": {
+      "greeting": "Hi {first_name}, thanks for reaching out about selling! It's after hours here so our team will follow up first thing in the morning - let's get a few quick details now so it's ready for them. What's the property address?"
+    },
+    "faq_quick_replies": [
+      {
+        "title": "Do I pay any fees?",
+        "payload": "FAQ_FEES",
+        "answer": "No - we don't charge any fees or commissions. The offer you're given is what you get."
+      },
+      {
+        "title": "How fast can you close?",
+        "payload": "FAQ_SPEED",
+        "answer": "We're flexible on timeline and can move quickly if you need to - our team will go over exact options with you directly."
+      },
+      {
+        "title": "Do I need to make repairs?",
+        "payload": "FAQ_REPAIRS",
+        "answer": "No - we buy as-is, so there's nothing you need to fix, clean out, or prepare before talking to us."
+      }
+    ],
+    "questions": {
+      "awaiting_address": {
+        "prompt": "What's the property address?"
+      },
+      "awaiting_condition": {
+        "prompt": "Got it, thanks. What condition is the property in (e.g. needs work, move-in ready, vacant)?"
+      },
+      "awaiting_timeline": {
+        "prompt": "Thanks. When are you hoping to sell - right away, in the next few months, or just exploring for now?"
+      },
+      "awaiting_reason": {
+        "prompt": "Understood. Mind sharing why you're looking to sell? (inherited, behind on payments, tired of being a landlord, relocating, etc.)"
+      },
+      "awaiting_phone": {
+        "prompt": "Thanks for sharing that. What's the best phone number to reach you?"
+      },
+      "awaiting_best_time": {
+        "prompt": "Last one - what's the best time of day to call you?"
+      }
+    },
+    "closing_message": "Thank you! Our senior management team will review this and get back to you."
+  },
+  "comment_reply": {
+    "_comment": "Public comment on a post containing one of these keywords gets a public reply plus a private-reply DM to start the Messenger conversation. Requires pages_manage_engagement. Never a price or an offer here either.",
+    "keywords": ["sell", "selling", "cash", "offer", "house", "houses"],
+    "public_replies": [
+      "Thanks for the comment! We just sent you a message — check your inbox.",
+      "Appreciate you reaching out! Sent you a DM so we can get some quick details.",
+      "Thanks for commenting! Check your messages — we'd love to learn more."
+    ],
+    "private_reply": "Hi {first_name}, thanks for commenting! I just need a few quick details and I'll pass this straight to our acquisitions team. What's the property address?"
+  }
+}

@@ -1,0 +1,26 @@
+# Secrets - never commit
+config/.env
+data/fb_session_cookies.json
+
+# Database
+*.db
+*.db-wal
+*.db-shm
+
+# Logs
+logs/*
+!logs/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

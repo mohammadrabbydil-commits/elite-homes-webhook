@@ -1,0 +1,44 @@
+{
+  "page": "Elite Homes USA",
+  "market": "Jacksonville, FL",
+  "_positioning": "ACQUISITION ONLY. Confirmed by client 2026-09-23: the Page presents Elite Homes USA as a company actively BUYING in the area. No buyer-list, wholesaler, partner, or disposition content.",
+  "_claims_policy": "Client supplied this exact copy on 2026-09-25, including 'no fees' / 'zero fees' and 'fast close'. Those were previously excluded pending written approval (see project history) — client-authored copy naming them is that approval. Still excluded unless the client adds them: no agent commissions phrasing, financing-contingency language, a specific numeric closing timeline.",
+  "posts": [
+    {
+      "id": "post-acq-01",
+      "post_type": "homeowner",
+      "media_url": null,
+      "content": "Need to sell your Jacksonville house fast? No repairs, no fees. Send us a message today."
+    },
+    {
+      "id": "post-acq-02",
+      "post_type": "homeowner",
+      "media_url": null,
+      "content": "Inherited a house you don't want? We buy as-is, no cleanout needed."
+    },
+    {
+      "id": "post-acq-03",
+      "post_type": "homeowner",
+      "media_url": null,
+      "content": "Done being a landlord? We buy rentals, tenants and all."
+    },
+    {
+      "id": "post-acq-04",
+      "post_type": "homeowner",
+      "media_url": null,
+      "content": "House needs major repairs? We buy it as-is."
+    },
+    {
+      "id": "post-acq-05",
+      "post_type": "homeowner",
+      "media_url": null,
+      "content": "We're buying Jacksonville homes in any condition. Fast close, zero fees."
+    },
+    {
+      "id": "post-acq-06",
+      "post_type": "homeowner",
+      "media_url": null,
+      "content": "Elite Homes USA Group is actively buying in Jacksonville, FL and surrounding areas."
+    }
+  ]
+}

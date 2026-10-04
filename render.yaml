@@ -1,0 +1,42 @@
+services:
+  - type: web
+    name: elite-homes-webhook
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.messenger.webhook:app --host 0.0.0.0 --port $PORT
+    envVars:
+      # Secrets - set these in the Render dashboard, not here. sync:false
+      # means Render will prompt for a value instead of storing it in this
+      # file (which is committed to the repo).
+      - key: FB_APP_ID
+        sync: false
+      - key: FB_APP_SECRET
+        sync: false
+      - key: FB_PAGE_ACCESS_TOKEN
+        sync: false
+      - key: FB_PAGE_ID
+        sync: false
+      - key: FB_VERIFY_TOKEN
+        sync: false
+      # Non-secret defaults - safe to version.
+      - key: FB_GRAPH_API_VERSION
+        value: v21.0
+      - key: AUTOREPLY_ENABLED
+        value: "false"
+      - key: AUTOREPLY_MIN_DELAY_SECONDS
+        value: "45"
+      - key: AUTOREPLY_MAX_DELAY_SECONDS
+        value: "90"
+      - key: AUTOREPLY_MAX_PER_CONVERSATION
+        value: "1"
+      - key: BUSINESS_HOURS_START
+        value: "8"
+      - key: BUSINESS_HOURS_END
+        value: "20"
+      - key: TIMEZONE
+        value: America/New_York
+      - key: DATABASE_URL
+        value: sqlite:///./elite_homes.db
+      - key: LOG_LEVEL
+        value: INFO
