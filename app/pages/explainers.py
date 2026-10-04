@@ -19,7 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from fastapi import APIRouter
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 router = APIRouter()
 
@@ -36,7 +36,9 @@ DEMO_VIDEO_URL = "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/
 
 # Booking link - set once a tool (Calendly recommended) is created. Until
 # then /schedule falls back to a Message Us button.
-BOOKING_URL: str | None = None
+# NOTE: this is a 30-min Calendly event; the brief asked for a 15-min slot.
+# Swap the URL below once a 15-min event type is created - no other changes needed.
+BOOKING_URL: str | None = "https://calendly.com/mohammadrabby-dil/30min"
 
 
 @dataclass
@@ -264,17 +266,17 @@ async def common_questions_page() -> str:
     return _page("Common Questions", body, wide=True)
 
 
-@router.get("/schedule", response_class=HTMLResponse)
-async def schedule_page() -> str:
+@router.get("/schedule")
+async def schedule_page():
     if BOOKING_URL:
-        return _page("Redirecting...", f'<meta http-equiv="refresh" content="0;url={BOOKING_URL}">')
+        return RedirectResponse(url=BOOKING_URL, status_code=302)
     body = (
         "<h1>Schedule Your Free Assessment</h1><div class='rule'></div>"
         "<p class='copy'>Online booking is being set up. "
         "In the meantime, call or message us and we'll find a time that works.</p>"
         f"<a class='cta' href='{FACEBOOK_URL}'>Message Us</a>"
     )
-    return _page("Schedule", body)
+    return HTMLResponse(_page("Schedule", body))
 
 
 @router.get("/", response_class=HTMLResponse)
