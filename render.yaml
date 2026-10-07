@@ -23,7 +23,7 @@ services:
       - key: FB_GRAPH_API_VERSION
         value: v21.0
       - key: AUTOREPLY_ENABLED
-        value: "false"
+        value: "true"
       - key: AUTOREPLY_MIN_DELAY_SECONDS
         value: "45"
       - key: AUTOREPLY_MAX_DELAY_SECONDS
