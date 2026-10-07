@@ -279,6 +279,55 @@ async def schedule_page():
     return HTMLResponse(_page("Schedule", body))
 
 
+@router.get("/privacy", response_class=HTMLResponse)
+async def privacy_page() -> str:
+    body = f"""
+    <h1>Privacy Policy</h1>
+    <div class="rule"></div>
+    <p class="copy"><strong>Last updated:</strong> October 2026</p>
+
+    <p class="copy">This page explains what information Elite Homes USA (operating as
+    "Elite Homes Automation" on Facebook/Meta) collects through our Facebook Page,
+    Messenger, and this website, and how it is used.</p>
+
+    <h2 style="font-size:19px;margin-top:28px;">What we collect</h2>
+    <p class="copy">When you message our Facebook Page or interact with our automated
+    assistant, we may collect: your name and Facebook profile information made available
+    to us by Messenger, your messages to us, and - if you choose to share it while
+    asking about selling a property - your property address, the property's condition,
+    your timeline to sell, your reason for selling, your phone number, and your
+    preferred time to be called.</p>
+    <p class="copy">We do not collect this information through any other means, and we
+    do not ask for it unless you message us first.</p>
+
+    <h2 style="font-size:19px;margin-top:28px;">How we use it</h2>
+    <p class="copy">Solely to respond to your inquiry and, if you are interested in
+    selling a property, to have a member of our team follow up with you. We do not sell,
+    rent, or share this information with third parties for marketing purposes.</p>
+
+    <h2 style="font-size:19px;margin-top:28px;">How long we keep it</h2>
+    <p class="copy">We retain conversation records for as long as reasonably necessary
+    to respond to your inquiry and maintain accurate business records, and delete or
+    anonymize it on request (see Contact below).</p>
+
+    <h2 style="font-size:19px;margin-top:28px;">Facebook Platform data</h2>
+    <p class="copy">Our Messenger integration uses the Facebook Messenger Platform.
+    Any data we receive through it is handled according to this policy and is used only
+    for the purposes described above, consistent with
+    <a href="https://developers.facebook.com/devpolicy/" style="color:#1f4e8c;">Meta's
+    Platform Terms</a>.</p>
+
+    <h2 style="font-size:19px;margin-top:28px;">Your rights</h2>
+    <p class="copy">You can ask us what information we hold about you, ask us to correct
+    it, or ask us to delete it, at any time - see Contact below.</p>
+
+    <h2 style="font-size:19px;margin-top:28px;">Contact</h2>
+    <p class="copy">For any question about this policy or your data, message us on
+    Facebook at <a href="{FACEBOOK_URL}" style="color:#1f4e8c;">Elite Homes USA</a>.</p>
+    """
+    return HTMLResponse(_page("Privacy Policy", body))
+
+
 @router.get("/", response_class=HTMLResponse)
 async def home_page() -> str:
     def _row(items: list[Explainer]) -> str:
