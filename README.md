@@ -2,7 +2,10 @@
 
 A proof-of-concept automation stack for **Elite Homes USA** (Jacksonville, FL):
 scheduled Facebook Page posting through the official Graph API, post analytics
-collection, an outreach prospect pipeline, and a Streamlit dashboard over all of it.
+collection, an AI-powered Messenger agent, a comment auto-reply system, a
+supporting FAQ/booking website, an outreach prospect pipeline, and a Streamlit
+dashboard over all of it. Deployed in production on Render, backing the real
+Elite Homes USA Facebook Page.
 
 ---
 
@@ -16,7 +19,10 @@ collection, an outreach prospect pipeline, and a Streamlit dashboard over all of
 | Scheduler (`app/scheduler/tasks.py`) | **Working** | Publishing with retries, hourly analytics |
 | Dashboard (`app/dashboard/app.py`) | **Working** | 4 pages, login-gated |
 | Outreach: classification, templating, throttling, logging | **Working** | Dry-run campaigns run end to end |
-| Messenger auto-reply (inbound only) | **Built, gated** | Needs `pages_messaging` App Review before it can send |
+| Messenger auto-reply, scripted flow (inbound only) | **Working** | `pages_messaging` is granted and live; works for everyone once Meta's App Review finishes (currently active for Page roles) |
+| **AI Messenger agent** (`app/messenger/ai_agent.py`) | **Working** | Replaces the scripted flow with a real conversation; see [AI Messenger agent](#ai-messenger-agent) |
+| Comment auto-reply (`app/messenger/comment_responder.py`) | **Working** | Keyword-triggered public reply + private DM, feeds into the same agent |
+| Explainer / FAQ / booking website (`app/pages/`) | **Working** | FastAPI site covering what Facebook's own Page tabs can't (deployed on Render) |
 | Outreach: credentialed login, group scraping, DM sending | **Not implemented** | See [Outreach: compliant alternatives](#outreach-compliant-alternatives) |
 
 ---
@@ -48,6 +54,7 @@ Fill in `config/.env`:
 | `FB_PAGE_ACCESS_TOKEN` | Generated in step 3 below |
 | `DASHBOARD_USERNAME` / `DASHBOARD_PASSWORD` | Your choice (defaults `admin` / `elite2024`) |
 | `DATABASE_URL` | Leave as `sqlite:///./elite_homes.db` for the POC |
+| `OPENAI_API_KEY` | [platform.openai.com](https://platform.openai.com) → API keys. Only needed for the AI Messenger agent |
 
 Your Facebook App needs these permissions, and the Page must be administered by
 the user generating the token:
@@ -55,6 +62,15 @@ the user generating the token:
 - `pages_manage_posts` — publish and schedule posts
 - `pages_read_engagement` — read post insights
 - `pages_show_list` — enumerate the Pages the user administers
+- `pages_messaging` — send/receive Messenger conversations (needs App Review for general public use; works immediately for anyone with a role on the app)
+- `pages_manage_engagement`, `pages_read_user_content` — comment auto-reply
+- `pages_manage_metadata` — webhook field subscriptions, Page info updates
+
+**The app itself must be switched to Live mode** (App Dashboard → Publish) —
+while in Development mode, everything posted or sent is visible only to people
+with a role on the app, never real visitors. This tripped up this exact project
+for a while; see `app/messenger/webhook.py`'s `/debug/*` routes if posts or
+replies ever go quiet again.
 
 ### 3. Get a Page access token
 
@@ -145,14 +161,19 @@ elite-homes-poc/
 │   │   └── worker.py          # throttling, daily quota, dry-run campaigns
 │   ├── messenger/
 │   │   ├── api.py             # Messenger send API + sender actions
-│   │   ├── responder.py       # intent, humanised delay, templates, handoff
-│   │   └── webhook.py         # FastAPI receiver, signature-verified
+│   │   ├── responder.py       # intent, humanised delay, scripted flow, AI handoff
+│   │   ├── ai_agent.py        # the AI Messenger agent - see below
+│   │   ├── comment_responder.py  # keyword-triggered comment reply + private DM
+│   │   └── webhook.py         # FastAPI receiver, signature-verified, /debug/* routes
+│   ├── pages/
+│   │   └── explainers.py      # FAQ hub, booking redirect, privacy policy
 │   └── dashboard/app.py       # Streamlit: Overview, Posts, Analytics, Outreach
-├── data/posts.json            # the 5 acquisition posts
+├── data/posts.json            # the acquisition posts
 ├── config/
 │   ├── .env.example
 │   └── message_templates.json
-├── tests/                     # 65 tests, Graph API fully mocked
+├── tests/                     # 103 tests, Graph API and OpenAI both fully mocked
+├── render.yaml                # Render deployment config (non-secret env defaults)
 └── run.py                     # CLI entry point
 ```
 
@@ -178,12 +199,16 @@ elite-homes-poc/
 python -m pytest tests/ -q
 ```
 
-65 tests, no network access. They cover the exact Graph API payload we send
-(endpoint selection, `published` flag, `scheduled_publish_time`), error and retry
-classification, insight parsing, all six models with their relationships and
-cascades, the scheduler jobs, and the Messenger auto-reply — intent detection,
-delay bounds, business-hours switching, template rotation, one-reply-then-handoff,
-duplicate webhook suppression, and signature verification.
+103 tests, no network access — the Graph API and the OpenAI API are both fully
+mocked. They cover the exact Graph API payload we send (endpoint selection,
+`published` flag, `scheduled_publish_time`), error and retry classification,
+insight parsing, all six models with their relationships and cascades, the
+scheduler jobs, the scripted Messenger flow (intent detection, delay bounds,
+business-hours switching, template rotation, duplicate webhook suppression,
+signature verification), the AI agent (price-guardrail enforcement, fail-closed
+behaviour on any API error, field extraction, full-pipeline integration with the
+scripted flow as fallback), and comment auto-reply (keyword matching, dedup,
+public-Page-comment exclusion).
 
 ---
 
@@ -210,31 +235,134 @@ because a seller lead is the one that matters.
 
 | Behaviour | Why |
 |---|---|
-| Randomised 45–90s delay | A fixed interval is as obvious a tell as an instant reply |
+| Randomised delay before replying | A fixed interval is as obvious a tell as an instant reply |
 | `mark_seen` then `typing_on` | The indicator appears when a person would start typing |
-| 2–3 phrasings per case | Consecutive leads never see identical text |
+| Varied phrasing, no repeated openers | Consecutive leads never see identical or templated-sounding text |
 | Separate after-hours copy | A cheerful instant reply at 2 AM is obviously automated |
-| **One reply, then handoff** | It never gets a second turn, so it never sounds robotic |
+| One question at a time | Real texters don't bundle three questions into one message |
 
-The delay is capped under two minutes on purpose. Sellers message several
-buyers at once and the first real response usually holds the conversation —
-looking unhurried is not worth losing the lead. `test_delay_stays_under_two_minutes`
-pins this.
+Delay is configurable (`AUTOREPLY_MIN_DELAY_SECONDS` / `_MAX_`) — short enough
+that the first real response still holds the lead before a competitor's does,
+long enough to not read as instant.
+
+### Two reply engines, one fallback chain
+
+1. **AI agent** (`app/messenger/ai_agent.py`) — the primary path when
+   `AI_AGENT_ENABLED=true`. See [AI Messenger agent](#ai-messenger-agent) below.
+2. **Scripted flow** (`responder.py`'s `_start_flow` / `_advance_flow`) — a
+   fixed question sequence (address → condition → timeline → reason → phone →
+   best time). This is what runs if the AI agent is disabled, unconfigured, or
+   a call to it fails for any reason — the AI layer can only improve the
+   experience, never break it.
+
+Either way, once a conversation is hands off to a human
+(`ConversationStatus.AWAITING_HUMAN`), it never gets another automated reply —
+`python run.py inbox` lists everything waiting.
 
 ### Setup
 
 1. `AUTOREPLY_ENABLED=false` in `config/.env` records messages without replying.
-   Leave it false until App Review passes.
-2. Expose the webhook over HTTPS (ngrok for testing, a real host for production).
+2. Expose the webhook over HTTPS (ngrok for testing, a real host for production
+   — this project runs on Render; see `render.yaml`).
 3. Facebook App → **Webhooks → Page** → callback URL `https://<host>/webhook`,
-   verify token = `FB_VERIFY_TOKEN`, subscribe to **messages**.
-4. Submit `pages_messaging` for App Review. They require a screencast of the
-   flow. Until it passes, replies work only for people with a role on the app.
-5. Flip `AUTOREPLY_ENABLED=true`.
+   verify token = `FB_VERIFY_TOKEN`, subscribe to **messages** and **feed**
+   (feed is for comment auto-reply, see below). Also install the app on the
+   Page itself: `POST /{page-id}/subscribed_apps?subscribed_fields=feed,messages`
+   — subscribing at the app level is not enough on its own.
+4. `pages_messaging` needs App Review to work for the general public; it works
+   immediately for anyone with a role on the app once granted (Standard
+   Access). Submit for review with a screencast of the flow when ready.
+5. Flip `AUTOREPLY_ENABLED=true`, and `AI_AGENT_ENABLED=true` if using the AI
+   agent (needs `OPENAI_API_KEY` set too).
 
 Every delivery is signature-verified against the app secret
 (`X-Hub-Signature-256`); without that anyone who learns the URL could forge
 inbound messages and make the Page reply to strangers.
+
+### If replies silently stop working
+
+This happened twice during development, both silent (webhook returns 200,
+nothing goes out) and both diagnosed with the `/debug/*` routes in
+`webhook.py` (`/debug/recent` — what actually reached the DB; `/debug/token` —
+what token is actually loaded, checked live against Facebook; `/debug/reset` —
+unstick a test conversation; `/debug/log` — tail the log file). Both routes
+are gated behind `?key=<FB_VERIFY_TOKEN>` as a cheap deterrent, not real auth —
+**remove them before this goes fully production-hardened.**
+
+Root causes found so far, in order of likelihood:
+1. **The app is still in Development mode.** Published content and replies
+   are then visible only to people with a role on the app, never real
+   visitors — looks identical to "nothing is happening" from the outside.
+   Fix: App Dashboard → Publish.
+2. **The Page token is stale or was never exchanged.** A token pasted
+   straight from Graph API Explorer is short-lived and type `USER`; always
+   run it through `python run.py auth --token <token>` first and use *that*
+   output, not the raw paste. `/debug/token` shows `type` and `expires_at`
+   live, so this is always checkable rather than assumed.
+3. **The Page isn't subscribed to the right fields**, or only the app-level
+   subscription was set without installing the app on the Page itself — see
+   step 3 above.
+
+---
+
+## AI Messenger agent
+
+`app/messenger/ai_agent.py`. Replaces the fixed question script with a real
+conversation for anyone messaging the Page — not just sellers — while
+collecting the same information a seller lead needs (address, condition,
+timeline, reason for selling, phone, best time to call).
+
+### Guardrails come first, not last
+
+An ungoverned AI talking to real sellers about their homes is a liability
+risk, not just a feature. Two independent layers enforce the one rule that
+matters most:
+
+1. The system prompt instructs the model to never state a price, a dollar
+   figure, or anything that reads as an offer or valuation — and to never
+   guess at legal, tax, or financial specifics, or invent an answer it
+   doesn't actually have. When it doesn't know, it says so and hands off.
+2. **Every reply is scanned for price-shaped text** (`_contains_price`) before
+   it's ever sent, regardless of what the model did. If one slips through,
+   it's discarded and swapped for a safe fallback with handoff forced on.
+   The prompt is necessary but not sufficient; the scan is what actually
+   stops a leak — `test_price_in_reply_is_blocked_even_if_model_ignored_the_prompt`
+   pins this.
+
+The system prompt also injects the real current date on every call, so the
+agent can catch an inconsistent or already-past date a person gives instead
+of silently accepting it.
+
+### Fails closed, always
+
+Any failure — disabled, unconfigured, network error, malformed response,
+empty reply — returns `AgentReply(success=False, handoff=True)` and the
+caller falls straight through to the scripted flow. The AI layer never has
+to work for the Messenger system to keep functioning.
+
+### Configuration
+
+| Variable | Default | Notes |
+|---|---|---|
+| `OPENAI_API_KEY` | — | Required for the agent to run at all |
+| `AI_AGENT_MODEL` | `gpt-5.5` | Balance of reply quality and latency for real-time chat; a full reasoning-tier model was ~2x slower for a weaker reply in testing |
+| `AI_AGENT_ENABLED` | `false` | Independent of `AUTOREPLY_ENABLED` — can be off while the scripted flow still runs |
+
+---
+
+## Comment auto-reply
+
+`app/messenger/comment_responder.py`. A Page comment containing a trigger
+keyword (`sell`, `selling`, `cash`, `offer`, `house`, `houses` —
+`config/message_templates.json`'s `comment_reply.keywords`) gets a public
+reply under the comment plus a private Messenger DM via Facebook's Private
+Replies API, which opens straight into the same AI/scripted conversation
+above — the commenter's ID becomes a normal `psid`, no separate logic needed.
+
+Needs `pages_manage_engagement` in addition to `pages_messaging`, and the
+Page's webhook subscription must include `feed` (see Messenger setup above).
+Same idempotency and "ignore the Page's own comments" guards as the message
+path.
 
 ---
 
@@ -285,9 +413,22 @@ automation handles worst.
 
 ## Security notes for the POC
 
-- `config/.env` holds live credentials and is gitignored. Never commit it.
+- `config/.env` holds live credentials (including `OPENAI_API_KEY`) and is
+  gitignored. Never commit it. On Render, secrets are set directly in the
+  dashboard, not in `render.yaml`.
+- A token pasted from Graph API Explorer is short-lived — always exchange it
+  with `python run.py auth --token <token>` and use the derived Page token,
+  never the raw paste, anywhere it's stored long-term (including Render).
 - Dashboard auth is a plaintext comparison against an env var — fine for a local
   POC, not for anything internet-facing. Put it behind real auth before exposing it.
+- The `/debug/*` routes in `webhook.py` are a shared-secret check
+  (`?key=<FB_VERIFY_TOKEN>`), not real auth, and expose conversation content.
+  Built for diagnosing production webhook issues — remove them once the
+  current issues are fully resolved.
 - `FB_USER_PASSWORD` is only read by the outreach module. Leave it blank.
-- The SQLite file is unencrypted and holds prospect personal data. Treat it as
-  sensitive and delete it when the POC concludes.
+- The SQLite file is unencrypted and holds prospect and lead personal data
+  (including anything the AI agent collects). Treat it as sensitive.
+  **It is not currently on persistent storage on Render** — every deploy
+  resets it to empty, which also means every deploy currently loses
+  conversation history. Needs a persistent disk or a real hosted database
+  before this matters for a live business.
