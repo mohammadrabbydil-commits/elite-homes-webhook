@@ -176,6 +176,66 @@ def create_app() -> FastAPI:
             "ai_agent_configured": bool(settings.openai_api_key),
         }
 
+    @app.get("/debug/recent")
+    def debug_recent(key: str, limit: int = 20) -> dict:
+        """Temporary diagnostic: what has actually reached the webhook and
+        been processed. Protected by FB_VERIFY_TOKEN as a shared secret -
+        not real auth, just enough to keep it off casual discovery.
+        Remove once the pages_messaging delivery issue is resolved.
+        """
+        if key != settings.fb_verify_token:
+            return {"error": "unauthorized"}
+
+        from app.database.db import session_scope
+        from app.database.models import Conversation, Message
+        from sqlalchemy import func, select
+
+        with session_scope() as session:
+            messages = session.scalars(
+                select(Message).order_by(Message.timestamp.desc()).limit(limit)
+            ).all()
+            conversations = session.scalars(
+                select(Conversation).order_by(Conversation.last_message_at.desc()).limit(limit)
+            ).all()
+            total = session.scalar(select(func.count()).select_from(Message))
+            return {
+                "message_count_total": total,
+                "recent_messages": [
+                    {
+                        "conversation_id": m.conversation_id,
+                        "mid": m.mid,
+                        "direction": m.direction.value,
+                        "text": m.text,
+                        "is_auto": m.is_auto,
+                        "timestamp": m.timestamp.isoformat(),
+                    }
+                    for m in messages
+                ],
+                "recent_conversations": [
+                    {
+                        "id": c.id,
+                        "psid": c.psid,
+                        "status": c.status.value,
+                        "stage": c.stage.value,
+                        "intent": c.intent.value,
+                        "last_message_at": c.last_message_at.isoformat(),
+                    }
+                    for c in conversations
+                ],
+            }
+
+    @app.get("/debug/log")
+    def debug_log(key: str, lines: int = 200) -> dict:
+        if key != settings.fb_verify_token:
+            return {"error": "unauthorized"}
+        from app.config import LOG_DIR
+
+        log_path = LOG_DIR / "elite_homes.log"
+        if not log_path.exists():
+            return {"error": "no log file found", "path": str(log_path)}
+        content = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+        return {"lines": content[-lines:]}
+
     return app
 
 
