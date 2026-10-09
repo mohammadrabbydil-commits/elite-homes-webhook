@@ -39,6 +39,7 @@ from app.database.models import (
     MessageDirection,
     utcnow,
 )
+from app.messenger import ai_agent
 from app.messenger.api import get_user_profile, send_sender_action, send_text
 
 logger = logging.getLogger(__name__)
@@ -207,7 +208,10 @@ def _start_flow(first_name: str | None) -> ReplyPlan:
 
 
 def _advance_flow(
-    text: str, conversation: Conversation, quick_reply_payload: str | None
+    text: str,
+    conversation: Conversation,
+    quick_reply_payload: str | None,
+    history: list[Message] | None = None,
 ) -> ReplyPlan:
     """Continue an in-progress seller question flow by one step."""
     flow_cfg = _load_seller_flow_config()
@@ -227,6 +231,27 @@ def _advance_flow(
             intent=conversation.intent,
             handoff=False,
             new_stage=stage,
+        )
+
+    # AI agent path: free-text replies go to the model instead of the rigid
+    # one-question-at-a-time script, when enabled and configured. Any
+    # failure here (disabled, missing key, network error, malformed
+    # response) falls straight through to the rigid flow below - the AI
+    # layer can only add a better experience, never remove the working one.
+    if settings.ai_agent_enabled and settings.openai_api_key:
+        agent_result = ai_agent.generate_reply(history or [], text)
+        if agent_result.success:
+            return ReplyPlan(
+                should_reply=True,
+                text=agent_result.text,
+                delay_seconds=compute_delay(),
+                intent=conversation.intent,
+                handoff=agent_result.handoff,
+                new_stage=FlowStage.COMPLETE if agent_result.handoff else stage,
+                captured=agent_result.extracted or None,
+            )
+        logger.warning(
+            "AI agent unavailable (%s), falling back to the scripted flow", agent_result.error
         )
 
     field = _STAGE_FIELD[stage]
@@ -261,6 +286,7 @@ def plan_reply(
     conversation: Conversation,
     first_name: str | None = None,
     quick_reply_payload: str | None = None,
+    history: list[Message] | None = None,
 ) -> ReplyPlan:
     """Decide whether and how to auto-reply to one inbound message.
 
@@ -277,7 +303,7 @@ def plan_reply(
 
     # Mid-flow: this message answers (or asks about) the outstanding question.
     if conversation.status is ConversationStatus.AUTO_REPLIED and conversation.stage is not FlowStage.COMPLETE:
-        return _advance_flow(text, conversation, quick_reply_payload)
+        return _advance_flow(text, conversation, quick_reply_payload, history)
 
     if conversation.status is ConversationStatus.AWAITING_HUMAN:
         return ReplyPlan(
@@ -347,6 +373,17 @@ def handle_inbound_message(
             session.add(conversation)
             session.flush()
 
+        # Prior turns only - fetched before this message is added, so the AI
+        # agent (if it runs) sees the same history a human reading the
+        # thread would, with the current message passed separately.
+        history = list(
+            session.scalars(
+                select(Message)
+                .where(Message.conversation_id == conversation.id)
+                .order_by(Message.timestamp)
+            )
+        )
+
         conversation.last_message_at = utcnow()
         session.add(
             Message(
@@ -359,7 +396,7 @@ def handle_inbound_message(
         )
 
         first_name = (conversation.name or "").split()[0] if conversation.name else None
-        plan = plan_reply(text, conversation, first_name, quick_reply_payload)
+        plan = plan_reply(text, conversation, first_name, quick_reply_payload, history)
 
         if plan.intent is not Intent.UNKNOWN:
             conversation.intent = plan.intent

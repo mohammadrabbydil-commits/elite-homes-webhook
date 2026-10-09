@@ -57,6 +57,13 @@ class Settings:
     fb_user_email: str = field(default_factory=lambda: _get("FB_USER_EMAIL"))
     fb_user_password: str = field(default_factory=lambda: _get("FB_USER_PASSWORD"))
 
+    # --- AI agent (Messenger conversations) ---
+    openai_api_key: str = field(default_factory=lambda: _get("OPENAI_API_KEY"))
+    ai_agent_model: str = field(default_factory=lambda: _get("AI_AGENT_MODEL", "gpt-5-mini"))
+    ai_agent_enabled: bool = field(
+        default_factory=lambda: _get("AI_AGENT_ENABLED", "false").lower() == "true"
+    )
+
     # --- Messenger auto-reply ---
     fb_verify_token: str = field(default_factory=lambda: _get("FB_VERIFY_TOKEN", "elite-homes-verify"))
     autoreply_enabled: bool = field(

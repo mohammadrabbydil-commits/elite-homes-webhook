@@ -385,3 +385,102 @@ def test_signature_verification_accepts_valid_and_rejects_forged():
     assert verify_signature(payload, "sha256=" + "0" * 64) is False
     assert verify_signature(payload, None) is False
     assert verify_signature(b'{"object":"tampered"}', f"sha256={good}") is False
+
+
+# --- AI agent integration (full pipeline, AI call mocked) -------------------
+
+
+def _enable_ai_agent(monkeypatch):
+    from dataclasses import replace
+
+    from app.config import settings as base
+
+    monkeypatch.setattr(
+        "app.messenger.responder.settings",
+        replace(base, autoreply_enabled=True, ai_agent_enabled=True, openai_api_key="test-key"),
+    )
+
+
+def test_ai_agent_drives_the_second_reply_when_enabled(db_session, monkeypatch):
+    from app.messenger.ai_agent import AgentReply
+
+    _enable_ai_agent(monkeypatch)
+
+    with patch("app.messenger.responder.get_user_profile", return_value={}), \
+         patch("app.messenger.responder.send_sender_action", return_value=True), \
+         patch("app.messenger.responder.send_text") as mock_send, \
+         patch("app.messenger.ai_agent.generate_reply") as mock_agent:
+        mock_send.side_effect = [
+            SendResult(success=True, message_id="m_1"),
+            SendResult(success=True, message_id="m_2"),
+        ]
+        mock_agent.return_value = AgentReply(
+            success=True,
+            text="Got it, what condition is it in?",
+            handoff=False,
+            extracted={"property_address": "456 Oak Ave"},
+        )
+
+        handle_inbound_message("psid_1", "SELL 456 Oak Ave", mid="mid_1", sleep=False)
+        handle_inbound_message("psid_1", "it's a rental, needs some work", mid="mid_2", sleep=False)
+
+    mock_agent.assert_called_once()
+    history_arg, message_arg = mock_agent.call_args.args
+    assert message_arg == "it's a rental, needs some work"
+    assert len(history_arg) == 2  # the greeting out, and the trigger message in
+
+    convo = db_session.scalar(select(Conversation).where(Conversation.psid == "psid_1"))
+    assert convo.property_address == "456 Oak Ave"
+    assert convo.status is ConversationStatus.AUTO_REPLIED  # handoff=False, still ongoing
+
+
+def test_ai_agent_handoff_ends_the_conversation(db_session, monkeypatch):
+    from app.messenger.ai_agent import AgentReply
+
+    _enable_ai_agent(monkeypatch)
+
+    with patch("app.messenger.responder.get_user_profile", return_value={}), \
+         patch("app.messenger.responder.send_sender_action", return_value=True), \
+         patch("app.messenger.responder.send_text") as mock_send, \
+         patch("app.messenger.ai_agent.generate_reply") as mock_agent:
+        mock_send.side_effect = [
+            SendResult(success=True, message_id="m_1"),
+            SendResult(success=True, message_id="m_2"),
+        ]
+        mock_agent.return_value = AgentReply(
+            success=True,
+            text="Thanks, our team will reach out shortly!",
+            handoff=True,
+            extracted={"phone_number": "904-555-0100"},
+        )
+
+        handle_inbound_message("psid_1", "SELL 456 Oak Ave", mid="mid_1", sleep=False)
+        handle_inbound_message("psid_1", "call me at 904-555-0100", mid="mid_2", sleep=False)
+
+    convo = db_session.scalar(select(Conversation).where(Conversation.psid == "psid_1"))
+    assert convo.phone_number == "904-555-0100"
+    assert convo.stage is FlowStage.COMPLETE
+    assert convo.status is ConversationStatus.AWAITING_HUMAN
+
+
+def test_ai_agent_failure_falls_back_to_scripted_flow(db_session, monkeypatch):
+    _enable_ai_agent(monkeypatch)
+
+    with patch("app.messenger.responder.get_user_profile", return_value={}), \
+         patch("app.messenger.responder.send_sender_action", return_value=True), \
+         patch("app.messenger.responder.send_text") as mock_send, \
+         patch("app.messenger.ai_agent.generate_reply") as mock_agent:
+        from app.messenger.ai_agent import AgentReply
+
+        mock_send.side_effect = [
+            SendResult(success=True, message_id="m_1"),
+            SendResult(success=True, message_id="m_2"),
+        ]
+        mock_agent.return_value = AgentReply(success=False, error="API down", handoff=True)
+
+        handle_inbound_message("psid_1", "SELL 456 Oak Ave", mid="mid_1", sleep=False)
+        handle_inbound_message("psid_1", "4218 Hendricks Ave", mid="mid_2", sleep=False)
+
+    # Falls back to the rigid script's next question (condition) rather than failing silently.
+    second_outbound = mock_send.call_args_list[1].args[1]
+    assert "condition" in second_outbound.lower()
