@@ -224,6 +224,26 @@ def create_app() -> FastAPI:
                 ],
             }
 
+    @app.get("/debug/reset")
+    def debug_reset(key: str, psid: str) -> dict:
+        """Reset a test conversation back to a clean, replyable state -
+        testing-only convenience. Remove alongside the other /debug routes."""
+        if key != settings.fb_verify_token:
+            return {"error": "unauthorized"}
+
+        from app.database.db import session_scope
+        from app.database.models import Conversation, ConversationStatus, FlowStage
+        from sqlalchemy import select
+
+        with session_scope() as session:
+            convo = session.scalar(select(Conversation).where(Conversation.psid == psid).limit(1))
+            if convo is None:
+                return {"error": "no conversation found for that psid"}
+            convo.status = ConversationStatus.NEW
+            convo.stage = FlowStage.AWAITING_ADDRESS
+            convo.auto_replies_sent = 0
+            return {"reset": True, "conversation_id": convo.id, "psid": psid}
+
     @app.get("/debug/log")
     def debug_log(key: str, lines: int = 200) -> dict:
         if key != settings.fb_verify_token:
