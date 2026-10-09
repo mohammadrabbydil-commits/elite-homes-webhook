@@ -59,7 +59,7 @@ class Settings:
 
     # --- AI agent (Messenger conversations) ---
     openai_api_key: str = field(default_factory=lambda: _get("OPENAI_API_KEY"))
-    ai_agent_model: str = field(default_factory=lambda: _get("AI_AGENT_MODEL", "gpt-5-mini"))
+    ai_agent_model: str = field(default_factory=lambda: _get("AI_AGENT_MODEL", "gpt-5.5"))
     ai_agent_enabled: bool = field(
         default_factory=lambda: _get("AI_AGENT_ENABLED", "false").lower() == "true"
     )
