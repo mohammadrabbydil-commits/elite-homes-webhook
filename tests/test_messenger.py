@@ -401,6 +401,35 @@ def _enable_ai_agent(monkeypatch):
     )
 
 
+def test_ai_agent_drives_the_very_first_reply_when_enabled(db_session, monkeypatch):
+    """The AI now handles message #1 too, not just continuations."""
+    from app.messenger.ai_agent import AgentReply
+
+    _enable_ai_agent(monkeypatch)
+
+    with patch("app.messenger.responder.get_user_profile", return_value={}), \
+         patch("app.messenger.responder.send_sender_action", return_value=True), \
+         patch("app.messenger.responder.send_text") as mock_send, \
+         patch("app.messenger.ai_agent.generate_reply") as mock_agent:
+        mock_send.return_value = SendResult(success=True, message_id="m_1")
+        mock_agent.return_value = AgentReply(
+            success=True,
+            text="Thanks for reaching out! What's the property address?",
+            handoff=False,
+            extracted={},
+        )
+
+        handle_inbound_message("psid_1", "SELL 456 Oak Ave", mid="mid_1", sleep=False)
+
+    mock_agent.assert_called_once()
+    history_arg, message_arg = mock_agent.call_args.args
+    assert message_arg == "SELL 456 Oak Ave"
+    assert history_arg == []  # nothing before the first message
+
+    convo = db_session.scalar(select(Conversation).where(Conversation.psid == "psid_1"))
+    assert convo.status is ConversationStatus.AUTO_REPLIED  # handoff=False, still ongoing
+
+
 def test_ai_agent_drives_the_second_reply_when_enabled(db_session, monkeypatch):
     from app.messenger.ai_agent import AgentReply
 
@@ -414,20 +443,23 @@ def test_ai_agent_drives_the_second_reply_when_enabled(db_session, monkeypatch):
             SendResult(success=True, message_id="m_1"),
             SendResult(success=True, message_id="m_2"),
         ]
-        mock_agent.return_value = AgentReply(
-            success=True,
-            text="Got it, what condition is it in?",
-            handoff=False,
-            extracted={"property_address": "456 Oak Ave"},
-        )
+        mock_agent.side_effect = [
+            AgentReply(success=True, text="Thanks! What's the address?", handoff=False),
+            AgentReply(
+                success=True,
+                text="Got it, what condition is it in?",
+                handoff=False,
+                extracted={"property_address": "456 Oak Ave"},
+            ),
+        ]
 
         handle_inbound_message("psid_1", "SELL 456 Oak Ave", mid="mid_1", sleep=False)
         handle_inbound_message("psid_1", "it's a rental, needs some work", mid="mid_2", sleep=False)
 
-    mock_agent.assert_called_once()
-    history_arg, message_arg = mock_agent.call_args.args
+    assert mock_agent.call_count == 2
+    history_arg, message_arg = mock_agent.call_args_list[1].args
     assert message_arg == "it's a rental, needs some work"
-    assert len(history_arg) == 2  # the greeting out, and the trigger message in
+    assert len(history_arg) == 2  # the first AI reply out, and the trigger message in
 
     convo = db_session.scalar(select(Conversation).where(Conversation.psid == "psid_1"))
     assert convo.property_address == "456 Oak Ave"
@@ -447,12 +479,15 @@ def test_ai_agent_handoff_ends_the_conversation(db_session, monkeypatch):
             SendResult(success=True, message_id="m_1"),
             SendResult(success=True, message_id="m_2"),
         ]
-        mock_agent.return_value = AgentReply(
-            success=True,
-            text="Thanks, our team will reach out shortly!",
-            handoff=True,
-            extracted={"phone_number": "904-555-0100"},
-        )
+        mock_agent.side_effect = [
+            AgentReply(success=True, text="Thanks! What's the address?", handoff=False),
+            AgentReply(
+                success=True,
+                text="Thanks, our team will reach out shortly!",
+                handoff=True,
+                extracted={"phone_number": "904-555-0100"},
+            ),
+        ]
 
         handle_inbound_message("psid_1", "SELL 456 Oak Ave", mid="mid_1", sleep=False)
         handle_inbound_message("psid_1", "call me at 904-555-0100", mid="mid_2", sleep=False)

@@ -315,6 +315,26 @@ def plan_reply(
     # Fresh conversation (or one that has never triggered an auto-reply yet).
     intent = detect_intent(text)
 
+    # AI agent handles the very first reply too, for every intent - not just
+    # SELL leads continuing a flow. Same fallback discipline as mid-flow: any
+    # failure here falls straight through to the scripted paths below.
+    if settings.ai_agent_enabled and settings.openai_api_key:
+        agent_result = ai_agent.generate_reply(history or [], text)
+        if agent_result.success:
+            return ReplyPlan(
+                should_reply=True,
+                text=agent_result.text,
+                delay_seconds=compute_delay(),
+                intent=intent,
+                handoff=agent_result.handoff,
+                new_stage=FlowStage.COMPLETE if agent_result.handoff else FlowStage.AWAITING_ADDRESS,
+                captured=agent_result.extracted or None,
+            )
+        logger.warning(
+            "AI agent unavailable for first reply (%s), falling back to the scripted path",
+            agent_result.error,
+        )
+
     if intent is Intent.SELL:
         return _start_flow(first_name)
 
