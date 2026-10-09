@@ -172,6 +172,8 @@ def create_app() -> FastAPI:
                 settings.autoreply_min_delay_seconds,
                 settings.autoreply_max_delay_seconds,
             ],
+            "ai_agent_enabled": settings.ai_agent_enabled,
+            "ai_agent_configured": bool(settings.openai_api_key),
         }
 
     return app
