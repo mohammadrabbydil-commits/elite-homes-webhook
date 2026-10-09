@@ -244,6 +244,28 @@ def create_app() -> FastAPI:
             convo.auto_replies_sent = 0
             return {"reset": True, "conversation_id": convo.id, "psid": psid}
 
+    @app.get("/debug/token")
+    def debug_token(key: str) -> dict:
+        """What token is actually loaded in this running process, and is it
+        valid - checked live against Facebook, not assumed."""
+        if key != settings.fb_verify_token:
+            return {"error": "unauthorized"}
+
+        import requests as req
+
+        app_token = f"{settings.fb_app_id}|{settings.fb_app_secret}"
+        token_suffix = settings.fb_page_access_token[-8:] if settings.fb_page_access_token else None
+        r = req.get(
+            f"{settings.graph_base_url}/debug_token",
+            params={"input_token": settings.fb_page_access_token, "access_token": app_token},
+            timeout=15,
+        )
+        return {
+            "token_suffix": token_suffix,
+            "page_id_configured": settings.fb_page_id,
+            "debug_token_response": r.json(),
+        }
+
     @app.get("/debug/log")
     def debug_log(key: str, lines: int = 200) -> dict:
         if key != settings.fb_verify_token:
