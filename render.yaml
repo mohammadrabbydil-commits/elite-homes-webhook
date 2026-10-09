@@ -25,9 +25,9 @@ services:
       - key: AUTOREPLY_ENABLED
         value: "true"
       - key: AUTOREPLY_MIN_DELAY_SECONDS
-        value: "45"
+        value: "9"
       - key: AUTOREPLY_MAX_DELAY_SECONDS
-        value: "90"
+        value: "14"
       - key: AUTOREPLY_MAX_PER_CONVERSATION
         value: "1"
       - key: BUSINESS_HOURS_START
