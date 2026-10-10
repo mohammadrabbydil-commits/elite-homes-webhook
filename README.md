@@ -199,7 +199,7 @@ elite-homes-poc/
 python -m pytest tests/ -q
 ```
 
-114 tests, no network access — the Graph API and the OpenAI API are both fully
+120 tests, no network access — the Graph API and the OpenAI API are both fully
 mocked. They cover the exact Graph API payload we send (endpoint selection,
 `published` flag, `scheduled_publish_time`), error and retry classification,
 insight parsing, all six models with their relationships and cascades, the
@@ -365,6 +365,12 @@ of silently accepting it.
   ("not sure", "soon"), the prompt tells the agent to ask one natural
   follow-up for something concrete rather than moving straight to the next
   question or rushing to hand off.
+- **Never uses a dash (client preference).** The prompt forbids an em dash,
+  en dash, or spaced hyphen used as punctuation, and `_strip_dashes` rewrites
+  one into a comma if the model reaches for it anyway. Models default to the
+  em dash by habit, so this is enforced in code, not just asked for. A
+  hyphen inside an ordinary compound word (`as-is`, `move-in`) is left alone;
+  only the dash-as-punctuation habit is targeted.
 
 ### Staying accurate over a longer conversation
 

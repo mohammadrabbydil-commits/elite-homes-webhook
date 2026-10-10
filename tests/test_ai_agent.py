@@ -272,3 +272,39 @@ def test_non_repeated_reply_does_not_trigger_a_second_call(with_key):
         ai_agent.generate_reply(history, "123 Main St")
 
     assert mock_post.call_count == 1
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ("Got it — what's going on with it?", "Got it, what's going on with it?"),
+        ("No worries, just a general idea's fine - what's next?", "No worries, just a general idea's fine, what's next?"),
+        ("Great – thanks for sharing that.", "Great, thanks for sharing that."),
+    ],
+)
+def test_em_and_en_dashes_are_stripped_from_the_reply(with_key, raw, expected):
+    with patch("app.messenger.ai_agent.requests.post") as mock_post:
+        mock_post.return_value = _openai_response(raw)
+        result = ai_agent.generate_reply([], "hi")
+
+    assert result.text == expected
+    assert "—" not in result.text
+    assert "–" not in result.text
+    assert " - " not in result.text
+
+
+@pytest.mark.parametrize(
+    "text", ["We buy houses as-is, no repairs needed.", "Sight-unseen quotes aren't something we do."]
+)
+def test_hyphenated_compound_words_are_left_alone(with_key, text):
+    with patch("app.messenger.ai_agent.requests.post") as mock_post:
+        mock_post.return_value = _openai_response(text)
+        result = ai_agent.generate_reply([], "hi")
+
+    assert result.text == text
+
+
+def test_fallback_reply_never_uses_a_dash():
+    assert "—" not in ai_agent.FALLBACK_REPLY
+    assert "–" not in ai_agent.FALLBACK_REPLY
+    assert " - " not in ai_agent.FALLBACK_REPLY
