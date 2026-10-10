@@ -207,6 +207,29 @@ def test_typing_indicator_is_sent_before_the_reply(db_session, enabled):
     assert actions == ["mark_seen", "typing_on"]
 
 
+def test_mark_seen_fires_near_the_reply_not_on_receipt(db_session, enabled):
+    """mark_seen must not fire the instant the message arrives - a long
+    'Seen' silence is as much a bot tell as an instant reply. It should land
+    right before typing_on, after the main silent wait."""
+    calls: list[tuple] = []
+
+    with patch("app.messenger.responder.get_user_profile", return_value={}), \
+         patch("app.messenger.responder.send_sender_action",
+               side_effect=lambda psid, action: calls.append(("action", action))), \
+         patch("app.messenger.responder.send_text") as mock_send, \
+         patch("app.messenger.responder.time.sleep",
+               side_effect=lambda seconds: calls.append(("sleep", seconds))), \
+         patch("app.messenger.responder.compute_delay", return_value=40.0):
+        mock_send.return_value = SendResult(success=True, message_id="m_1")
+        handle_inbound_message("psid_1", "SELL now", mid="mid_1", sleep=True)
+
+    assert [kind for kind, _ in calls] == ["sleep", "action", "action", "sleep"]
+    assert calls[1] == ("action", "mark_seen")
+    assert calls[2] == ("action", "typing_on")
+    # The silent wait before mark_seen is the long stretch, not the typing tail.
+    assert calls[0][1] > calls[3][1]
+
+
 def test_duplicate_webhook_delivery_is_ignored(db_session, enabled):
     """Facebook redelivers events; replying twice is an obvious bot tell."""
     with patch("app.messenger.responder.get_user_profile", return_value={}), \

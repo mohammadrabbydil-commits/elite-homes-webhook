@@ -199,7 +199,7 @@ elite-homes-poc/
 python -m pytest tests/ -q
 ```
 
-113 tests, no network access — the Graph API and the OpenAI API are both fully
+114 tests, no network access — the Graph API and the OpenAI API are both fully
 mocked. They cover the exact Graph API payload we send (endpoint selection,
 `published` flag, `scheduled_publish_time`), error and retry classification,
 insight parsing, all six models with their relationships and cascades, the
@@ -239,7 +239,7 @@ because a seller lead is the one that matters.
 | Behaviour | Why |
 |---|---|
 | Randomised delay before replying | A fixed interval is as obvious a tell as an instant reply |
-| `mark_seen` then `typing_on` | The indicator appears when a person would start typing |
+| `mark_seen` fires right before `typing_on`, not on receipt | A message marked "Seen" instantly, then silence for 90s, is its own tell — a real person doesn't necessarily open it the second it lands |
 | Varied phrasing, no repeated openers | Consecutive leads never see identical or templated-sounding text |
 | Separate after-hours copy | A cheerful instant reply at 2 AM is obviously automated |
 | One question at a time | Real texters don't bundle three questions into one message |

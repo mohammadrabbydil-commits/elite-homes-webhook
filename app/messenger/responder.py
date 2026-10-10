@@ -2,12 +2,13 @@
 
 Design goals, in priority order:
 
-1. **Speed wins deals.** Sellers message several buyers at once and the first
-   real response usually holds the conversation. So the delay is short -
-   seconds, not minutes.
-2. **Never sound like a bot.** Randomised delay, a typing indicator, rotating
-   phrasings, and different copy outside business hours.
-3. **Capture a seller lead completely, then hand off.** A SELL-intent
+1. **Never sound like a bot.** The first reply lands quickly enough that the
+   lead doesn't feel ignored (~30-40s), but every reply after that is
+   deliberately slower (90-120s, client preference) - a real person doesn't
+   answer every message within seconds. `mark_seen` is timed to land just
+   before the reply, not the instant the message arrives, so there's no long
+   "Seen" silence to give it away either.
+2. **Capture a seller lead completely, then hand off.** A SELL-intent
    conversation runs a short question flow (address, condition, timeline,
    reason, phone, best time to call) and never makes an offer or states a
    price - it only gathers information for the team to call back on. Every
@@ -456,15 +457,19 @@ def handle_inbound_message(
     logger.info(
         "Replying to %s in %.0fs (intent=%s)", psid, plan.delay_seconds, plan.intent.value
     )
-    send_sender_action(psid, "mark_seen")
     if sleep:
-        # Wait first, then show typing for the last stretch, so the indicator
-        # appears when a person would actually start typing.
+        # Wait first with no indicator at all - mark_seen only fires close to
+        # when the reply actually goes out, not the instant the message
+        # arrives. A real person doesn't necessarily open a message the
+        # second it lands, so "Seen" immediately followed by a long silence
+        # is its own tell.
         typing_lead = min(plan.delay_seconds, 6.0)
         time.sleep(max(0.0, plan.delay_seconds - typing_lead))
+        send_sender_action(psid, "mark_seen")
         send_sender_action(psid, "typing_on")
         time.sleep(typing_lead)
     else:
+        send_sender_action(psid, "mark_seen")
         send_sender_action(psid, "typing_on")
 
     result = send_text(psid, plan.text, quick_replies=plan.quick_replies)
