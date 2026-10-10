@@ -24,6 +24,10 @@ services:
         value: v21.0
       - key: AUTOREPLY_ENABLED
         value: "true"
+      - key: AUTOREPLY_FIRST_MIN_DELAY_SECONDS
+        value: "30"
+      - key: AUTOREPLY_FIRST_MAX_DELAY_SECONDS
+        value: "40"
       - key: AUTOREPLY_MIN_DELAY_SECONDS
         value: "90"
       - key: AUTOREPLY_MAX_DELAY_SECONDS

@@ -69,15 +69,21 @@
       ],
       "buy": [
         "Hi {first_name}, thanks for reaching out. Let me get someone from the team to follow up with you on this shortly.",
-        "Hey {first_name}, appreciate the message. Someone will get back to you on this shortly."
+        "Hey {first_name}, appreciate the message. Someone will get back to you on this shortly.",
+        "Hi {first_name}, good to hear from you! I'll have someone on the team reach out about this soon.",
+        "Hey {first_name}, thanks for the message - passing this along, someone will follow up shortly."
       ],
       "partner": [
         "Hi {first_name}, thanks for reaching out. Let me pass this to the team and someone will follow up with you shortly.",
-        "Hey {first_name}, appreciate you reaching out. Someone will be in touch shortly."
+        "Hey {first_name}, appreciate you reaching out. Someone will be in touch shortly.",
+        "Hi {first_name}, always good to connect with partners - I'll have the team follow up with you directly.",
+        "Hey {first_name}, thanks for the message! Passing this to the team now."
       ],
       "default": [
         "Hi {first_name}, thanks for reaching out! What can we help you with?",
-        "Hey {first_name}, appreciate the message. What's going on, how can we help?"
+        "Hey {first_name}, appreciate the message. What's going on, how can we help?",
+        "Hi {first_name}, good to hear from you - what can I do for you?",
+        "Hey {first_name}, thanks for the message! What's on your mind?"
       ]
     },
     "after_hours": {
@@ -87,17 +93,27 @@
       ],
       "default": [
         "Hi {first_name}, thanks for reaching out! I'll get back to you first thing in the morning.",
-        "Hey {first_name}, got your message. I'll follow up with you in the morning."
+        "Hey {first_name}, got your message. I'll follow up with you in the morning.",
+        "Hi {first_name}, thanks for the message - it's after hours here, but I'll follow up first thing tomorrow.",
+        "Hey {first_name}, appreciate you reaching out! I'll get back to you in the morning."
       ]
     }
   },
   "seller_flow": {
-    "_comment": "Multi-step question intake for SELL-intent conversations. Replaces the single-line auto_reply.sell templates for that intent. NEVER add a dollar figure or a specific offer anywhere here - the flow collects information, it does not negotiate.",
+    "_comment": "Multi-step question intake for SELL-intent conversations. Replaces the single-line auto_reply.sell templates for that intent. NEVER add a dollar figure or a specific offer anywhere here - the flow collects information, it does not negotiate. Several phrasings per stage so this fallback path doesn't sound scripted either.",
     "business_hours": {
-      "greeting": "Hi {first_name}, thanks for reaching out about selling! I just need a few quick details and I'll pass this straight to our acquisitions team. What's the property address?"
+      "greetings": [
+        "Hi {first_name}, thanks for reaching out about selling! I just need a few quick details and I'll pass this straight to our acquisitions team. What's the property address?",
+        "Hi {first_name}, good to hear from you! Happy to take a look - what's the address on the property?",
+        "Hey {first_name}, thanks for the message! Let's start with the basics - what's the property address?"
+      ]
     },
     "after_hours": {
-      "greeting": "Hi {first_name}, thanks for reaching out about selling! It's after hours here so our team will follow up first thing in the morning - let's get a few quick details now so it's ready for them. What's the property address?"
+      "greetings": [
+        "Hi {first_name}, thanks for reaching out about selling! It's after hours here so our team will follow up first thing in the morning - let's get a few quick details now so it's ready for them. What's the property address?",
+        "Hi {first_name}, appreciate the message! It's late on our end, but let's get a head start - what's the property address?",
+        "Hey {first_name}, thanks for reaching out! Our team's offline for the night, but I can grab a few details now - what's the address?"
+      ]
     },
     "faq_quick_replies": [
       {
@@ -118,22 +134,46 @@
     ],
     "questions": {
       "awaiting_address": {
-        "prompt": "What's the property address?"
+        "prompts": [
+          "What's the property address?",
+          "What's the address on the property?",
+          "Where's the property located?"
+        ]
       },
       "awaiting_condition": {
-        "prompt": "Got it, thanks. What condition is the property in (e.g. needs work, move-in ready, vacant)?"
+        "prompts": [
+          "Got it, thanks. What condition is the property in (e.g. needs work, move-in ready, vacant)?",
+          "Thanks! What kind of shape is it in - any repairs needed, or is it move-in ready?",
+          "Appreciate that. Is it vacant, tenant-occupied, or are you living there now, and what condition is it in?"
+        ]
       },
       "awaiting_timeline": {
-        "prompt": "Thanks. When are you hoping to sell - right away, in the next few months, or just exploring for now?"
+        "prompts": [
+          "Thanks. When are you hoping to sell - right away, in the next few months, or just exploring for now?",
+          "Got it. What's your timeline looking like - ASAP, a few months out, or just gathering info for now?",
+          "Appreciate it. How soon are you looking to sell?"
+        ]
       },
       "awaiting_reason": {
-        "prompt": "Understood. Mind sharing why you're looking to sell? (inherited, behind on payments, tired of being a landlord, relocating, etc.)"
+        "prompts": [
+          "Understood. Mind sharing why you're looking to sell? (inherited, behind on payments, tired of being a landlord, relocating, etc.)",
+          "Thanks for that. What's prompting the sale - inherited property, relocating, tired landlord, something else?",
+          "Got it. Mind me asking what's behind the decision to sell?"
+        ]
       },
       "awaiting_phone": {
-        "prompt": "Thanks for sharing that. What's the best phone number to reach you?"
+        "prompts": [
+          "Thanks for sharing that. What's the best phone number to reach you?",
+          "Appreciate it. What's a good number for our team to reach you at?",
+          "Thanks. Where's the best number to call you back on?"
+        ]
       },
       "awaiting_best_time": {
-        "prompt": "Last one - what's the best time of day to call you?"
+        "prompts": [
+          "Last one - what's the best time of day to call you?",
+          "Almost done - what time of day usually works best for a call?",
+          "Last question - mornings, afternoons, or evenings work best for you?"
+        ]
       }
     },
     "closing_message": "Thank you! Our senior management team will review this and get back to you."

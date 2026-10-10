@@ -212,3 +212,63 @@ def test_network_error_fails_closed_after_retry_also_fails(with_key):
     assert mock_post.call_count == 2
     assert result.success is False
     assert result.handoff is True
+
+
+def test_support_email_is_injected_into_the_system_prompt(with_key):
+    with patch("app.messenger.ai_agent.requests.post") as mock_post:
+        mock_post.return_value = _openai_response("ok")
+        ai_agent.generate_reply([], "what's your email?")
+
+    system_content = mock_post.call_args.kwargs["json"]["messages"][0]["content"]
+    assert ai_agent.SUPPORT_EMAIL in system_content
+    assert "{support_email}" not in system_content
+
+
+def test_exact_repeat_of_last_outbound_message_triggers_regeneration(with_key):
+    from app.database.models import Message, MessageDirection
+
+    history = [
+        Message(direction=MessageDirection.INBOUND, text="when can you call?"),
+        Message(direction=MessageDirection.OUTBOUND, text="What's the best time to reach you?"),
+    ]
+    with patch("app.messenger.ai_agent.requests.post") as mock_post:
+        mock_post.side_effect = [
+            _openai_response("What's the best time to reach you?"),  # verbatim repeat
+            _openai_response("When during the day works best for a call?"),  # regenerated
+        ]
+        result = ai_agent.generate_reply(history, "not sure yet")
+
+    assert mock_post.call_count == 2
+    assert result.success is True
+    assert result.text == "When during the day works best for a call?"
+
+
+def test_regeneration_failure_keeps_the_original_reply(with_key):
+    import requests
+
+    from app.database.models import Message, MessageDirection
+
+    history = [
+        Message(direction=MessageDirection.OUTBOUND, text="What's the best time to reach you?"),
+    ]
+    with patch("app.messenger.ai_agent.requests.post") as mock_post:
+        mock_post.side_effect = [
+            _openai_response("What's the best time to reach you?"),
+            requests.RequestException("boom"),
+            requests.RequestException("boom"),  # the regeneration call itself retries once
+        ]
+        result = ai_agent.generate_reply(history, "not sure yet")
+
+    assert result.success is True
+    assert result.text == "What's the best time to reach you?"
+
+
+def test_non_repeated_reply_does_not_trigger_a_second_call(with_key):
+    from app.database.models import Message, MessageDirection
+
+    history = [Message(direction=MessageDirection.OUTBOUND, text="What's the address?")]
+    with patch("app.messenger.ai_agent.requests.post") as mock_post:
+        mock_post.return_value = _openai_response("Got it, what condition is it in?")
+        ai_agent.generate_reply(history, "123 Main St")
+
+    assert mock_post.call_count == 1

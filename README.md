@@ -199,17 +199,19 @@ elite-homes-poc/
 python -m pytest tests/ -q
 ```
 
-109 tests, no network access — the Graph API and the OpenAI API are both fully
+113 tests, no network access — the Graph API and the OpenAI API are both fully
 mocked. They cover the exact Graph API payload we send (endpoint selection,
 `published` flag, `scheduled_publish_time`), error and retry classification,
 insight parsing, all six models with their relationships and cascades, the
-scheduler jobs, the scripted Messenger flow (intent detection, delay bounds,
-business-hours switching, template rotation, duplicate webhook suppression,
-signature verification), the AI agent (price-guardrail enforcement, fail-closed
-behaviour on any API error, one automatic retry on a network error, known-fields
-injection, history truncation, field extraction, a full long-conversation
-stress test, and full-pipeline integration with the scripted flow as fallback),
-and comment auto-reply (keyword matching, dedup, public-Page-comment exclusion).
+scheduler jobs, the scripted Messenger flow (intent detection, first-reply vs.
+later-reply delay bounds, business-hours switching, template rotation,
+duplicate webhook suppression, signature verification), the AI agent
+(price-guardrail enforcement, fail-closed behaviour on any API error, one
+automatic retry on a network error, known-fields injection, history
+truncation, verbatim-repeat regeneration, support-email injection, field
+extraction, a full long-conversation stress test, and full-pipeline
+integration with the scripted flow as fallback), and comment auto-reply
+(keyword matching, dedup, public-Page-comment exclusion).
 
 ---
 
@@ -242,10 +244,11 @@ because a seller lead is the one that matters.
 | Separate after-hours copy | A cheerful instant reply at 2 AM is obviously automated |
 | One question at a time | Real texters don't bundle three questions into one message |
 
-Delay is configurable (`AUTOREPLY_MIN_DELAY_SECONDS` / `_MAX_`), currently
-1.5–2 minutes (client preference) — long enough that a reply never feels
-instant/automated, short enough that it still arrives while the person is
-actively in the conversation.
+Delay is configurable and split in two (client preference): the **first**
+reply in a conversation uses `AUTOREPLY_FIRST_MIN/MAX_DELAY_SECONDS` (~30–40s,
+so a lead doesn't feel ignored), and **every reply after that** uses
+`AUTOREPLY_MIN/MAX_DELAY_SECONDS` (90–120s) — slower and more deliberate, so
+the pace reads as human rather than instant.
 
 ### Two reply engines, one fallback chain
 
@@ -321,9 +324,12 @@ risk, not just a feature. Two independent layers enforce the one rule that
 matters most:
 
 1. The system prompt instructs the model to never state a price, a dollar
-   figure, or anything that reads as an offer or valuation — and to never
+   figure, or anything that reads as an offer or valuation — if asked for an
+   offer or a number, it explains (client-specified framing) that we don't
+   give one before actually assessing the property, and that a team member
+   follows up with real figures once that's done. It's also told to never
    guess at legal, tax, or financial specifics, or invent an answer it
-   doesn't actually have. When it doesn't know, it says so and hands off.
+   doesn't actually have — when it doesn't know, it says so and hands off.
 2. **Every reply is scanned for price-shaped text** (`_contains_price`) before
    it's ever sent, regardless of what the model did. If one slips through,
    it's discarded and swapped for a safe fallback with handoff forced on.
@@ -334,6 +340,31 @@ matters most:
 The system prompt also injects the real current date on every call, so the
 agent can catch an inconsistent or already-past date a person gives instead
 of silently accepting it.
+
+### Staying natural over many conversations
+
+- **Never repeats itself.** The prompt explicitly forbids reusing the exact
+  wording of an earlier reply in the same conversation, and a runtime check
+  (`_last_outbound_text` + `_regenerate_distinct_reply`) catches a verbatim
+  repeat if the model ignores that anyway — it gets one regeneration call
+  asking for different wording before the original ever goes out twice.
+- **30+ example phrasings across the ~15 situations that come up most**
+  (opening with a seller, asking each of the six fields, a vague-answer
+  follow-up, a price question, a legal question, someone asking for the
+  contact email, a buyer/partner inquiry, small talk, frustration, wrapping
+  up) are given to the model as style inspiration only — it's told explicitly
+  never to copy them verbatim and never to reuse the same one twice, so real
+  conversations still sound distinct from each other.
+- **One contact email, always exact.** `SUPPORT_EMAIL` (`Ellis@elitehomes1.com`)
+  is injected into the prompt and is the only address the agent is allowed to
+  give out — it's told never to invent or substitute a different one.
+- **Friendly, calm, never pushy.** The tone rule explicitly says not to
+  pressure or rush anyone, and not to repeat a request impatiently if someone
+  is slow to answer.
+- **Gathers quality, not just checkboxes.** If an answer is vague or one-word
+  ("not sure", "soon"), the prompt tells the agent to ask one natural
+  follow-up for something concrete rather than moving straight to the next
+  question or rushing to hand off.
 
 ### Staying accurate over a longer conversation
 

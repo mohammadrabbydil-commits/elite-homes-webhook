@@ -156,14 +156,21 @@ def is_business_hours(now: datetime | None = None) -> bool:
     return settings.business_hours_start <= local.hour < settings.business_hours_end
 
 
-def compute_delay() -> float:
+def compute_delay(is_first_reply: bool = False) -> float:
     """A randomised pause before replying.
 
     Randomised so consecutive leads never see the same interval - a fixed delay
-    is as obvious a tell as an instant reply.
+    is as obvious a tell as an instant reply. The very first reply in a
+    conversation uses a shorter band (client preference: ~35s, so the lead
+    doesn't feel ignored) - every reply after that uses the slower, more
+    deliberate band so the pace feels human rather than instant.
     """
-    low = settings.autoreply_min_delay_seconds
-    high = max(low, settings.autoreply_max_delay_seconds)
+    if is_first_reply:
+        low = settings.autoreply_first_min_delay_seconds
+        high = max(low, settings.autoreply_first_max_delay_seconds)
+    else:
+        low = settings.autoreply_min_delay_seconds
+        high = max(low, settings.autoreply_max_delay_seconds)
     return random.uniform(low, high)
 
 
@@ -203,14 +210,13 @@ def _start_flow(first_name: str | None) -> ReplyPlan:
     flow_cfg = _load_seller_flow_config()
     in_hours = is_business_hours()
     block = flow_cfg.get("business_hours" if in_hours else "after_hours", {})
-    text = block.get("greeting", "Thanks for reaching out! What's the property address?").format(
-        first_name=first_name or "there"
-    )
+    greetings = block.get("greetings") or ["Thanks for reaching out! What's the property address?"]
+    text = random.choice(greetings).format(first_name=first_name or "there")
 
     return ReplyPlan(
         should_reply=True,
         text=text,
-        delay_seconds=compute_delay(),
+        delay_seconds=compute_delay(is_first_reply=True),
         intent=Intent.SELL,
         handoff=False,
         quick_replies=_quick_replies_payload(flow_cfg),
@@ -233,8 +239,8 @@ def _advance_flow(
     faqs_by_payload = {faq["payload"]: faq for faq in flow_cfg.get("faq_quick_replies", [])}
     if quick_reply_payload and quick_reply_payload in faqs_by_payload:
         answer = faqs_by_payload[quick_reply_payload]["answer"]
-        current_prompt = flow_cfg.get("questions", {}).get(stage.value, {}).get("prompt", "")
-        combined = f"{answer}\n\n{current_prompt}".strip()
+        current_prompts = flow_cfg.get("questions", {}).get(stage.value, {}).get("prompts") or [""]
+        combined = f"{answer}\n\n{random.choice(current_prompts)}".strip()
         return ReplyPlan(
             should_reply=True,
             text=combined,
@@ -282,10 +288,10 @@ def _advance_flow(
             captured=captured,
         )
 
-    next_prompt = flow_cfg.get("questions", {}).get(following.value, {}).get("prompt", "")
+    next_prompts = flow_cfg.get("questions", {}).get(following.value, {}).get("prompts") or [""]
     return ReplyPlan(
         should_reply=True,
-        text=next_prompt,
+        text=random.choice(next_prompts),
         delay_seconds=compute_delay(),
         intent=conversation.intent,
         handoff=False,
@@ -339,7 +345,7 @@ def plan_reply(
             return ReplyPlan(
                 should_reply=True,
                 text=agent_result.text,
-                delay_seconds=compute_delay(),
+                delay_seconds=compute_delay(is_first_reply=True),
                 intent=intent,
                 handoff=agent_result.handoff,
                 new_stage=FlowStage.COMPLETE if agent_result.handoff else FlowStage.AWAITING_ADDRESS,
@@ -366,7 +372,7 @@ def plan_reply(
     return ReplyPlan(
         should_reply=True,
         text=choose_reply(intent, first_name),
-        delay_seconds=compute_delay(),
+        delay_seconds=compute_delay(is_first_reply=True),
         intent=intent,
         handoff=True,
     )

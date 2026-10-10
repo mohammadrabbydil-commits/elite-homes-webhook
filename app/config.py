@@ -69,6 +69,14 @@ class Settings:
     autoreply_enabled: bool = field(
         default_factory=lambda: _get("AUTOREPLY_ENABLED", "false").lower() == "true"
     )
+    # First reply in a conversation: client wants ~35s so the lead doesn't
+    # feel ignored. Every reply after that uses the slower band below.
+    autoreply_first_min_delay_seconds: int = field(
+        default_factory=lambda: _get_int("AUTOREPLY_FIRST_MIN_DELAY_SECONDS", 30)
+    )
+    autoreply_first_max_delay_seconds: int = field(
+        default_factory=lambda: _get_int("AUTOREPLY_FIRST_MAX_DELAY_SECONDS", 40)
+    )
     autoreply_min_delay_seconds: int = field(
         default_factory=lambda: _get_int("AUTOREPLY_MIN_DELAY_SECONDS", 90)
     )

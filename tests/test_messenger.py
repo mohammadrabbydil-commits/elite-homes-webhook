@@ -82,9 +82,24 @@ def test_delay_is_randomised_within_configured_bounds():
     assert len(set(round(d, 3) for d in delays)) > 40
 
 
-def test_delay_stays_under_two_minutes():
-    """Speed-to-lead matters more than looking unhurried."""
-    assert max(compute_delay() for _ in range(100)) < 120
+def test_first_reply_delay_is_faster_than_later_replies():
+    """Client preference: the first reply lands around 35s so a lead doesn't
+    feel ignored; every reply after that is slower and more deliberate so it
+    reads as human rather than instant."""
+    from app.config import settings
+
+    first_delays = [compute_delay(is_first_reply=True) for _ in range(50)]
+    later_delays = [compute_delay(is_first_reply=False) for _ in range(50)]
+
+    assert all(
+        settings.autoreply_first_min_delay_seconds <= d <= settings.autoreply_first_max_delay_seconds
+        for d in first_delays
+    )
+    assert all(
+        settings.autoreply_min_delay_seconds <= d <= settings.autoreply_max_delay_seconds
+        for d in later_delays
+    )
+    assert max(first_delays) < min(later_delays)
 
 
 @pytest.mark.parametrize(
@@ -310,7 +325,8 @@ def test_faq_quick_reply_answers_without_advancing_the_flow(db_session, enabled)
 
     assert faq_plan.should_reply is True
     assert "fee" in faq_plan.text.lower()
-    assert "address" in faq_plan.text.lower()  # the still-outstanding question is repeated
+    # the still-outstanding question is repeated - several phrasings are possible
+    assert any(w in faq_plan.text.lower() for w in ("address", "located"))
 
     convo = db_session.scalar(select(Conversation).where(Conversation.psid == "psid_1"))
     assert convo.stage is FlowStage.AWAITING_ADDRESS  # unchanged - FAQ tap isn't an answer
@@ -339,10 +355,10 @@ def test_seller_flow_copy_never_mentions_price():
     """The flow gathers information - it must never quote a figure or make an offer."""
     flow_cfg = _load_seller_flow_config()
     texts = [
-        flow_cfg["business_hours"]["greeting"],
-        flow_cfg["after_hours"]["greeting"],
+        *flow_cfg["business_hours"]["greetings"],
+        *flow_cfg["after_hours"]["greetings"],
         flow_cfg["closing_message"],
-        *(q["prompt"] for q in flow_cfg["questions"].values()),
+        *(prompt for q in flow_cfg["questions"].values() for prompt in q["prompts"]),
         *(f["answer"] for f in flow_cfg["faq_quick_replies"]),
     ]
     for text in texts:
@@ -517,8 +533,9 @@ def test_ai_agent_failure_falls_back_to_scripted_flow(db_session, monkeypatch):
         handle_inbound_message("psid_1", "4218 Hendricks Ave", mid="mid_2", sleep=False)
 
     # Falls back to the rigid script's next question (condition) rather than failing silently.
-    second_outbound = mock_send.call_args_list[1].args[1]
-    assert "condition" in second_outbound.lower()
+    convo = db_session.scalar(select(Conversation).where(Conversation.psid == "psid_1"))
+    assert convo.stage is FlowStage.AWAITING_CONDITION
+    assert convo.property_address == "4218 Hendricks Ave"
 
 
 def test_ai_agent_handles_a_long_conversation_without_re_asking_known_fields(db_session, monkeypatch):
