@@ -519,3 +519,73 @@ def test_ai_agent_failure_falls_back_to_scripted_flow(db_session, monkeypatch):
     # Falls back to the rigid script's next question (condition) rather than failing silently.
     second_outbound = mock_send.call_args_list[1].args[1]
     assert "condition" in second_outbound.lower()
+
+
+def test_ai_agent_handles_a_long_conversation_without_re_asking_known_fields(db_session, monkeypatch):
+    """Stress-test a longer, multi-turn conversation: fields accumulate
+    correctly across many turns, each call is told what's already known, and
+    the conversation still ends in a clean handoff."""
+    from app.messenger.ai_agent import AgentReply
+
+    _enable_ai_agent(monkeypatch)
+
+    turns = [
+        ("SELL my house please", AgentReply(success=True, text="Sure, what's the address?", handoff=False)),
+        ("123 Main St", AgentReply(
+            success=True, text="Got it, what condition is it in?", handoff=False,
+            extracted={"property_address": "123 Main St"},
+        )),
+        ("needs a new roof", AgentReply(
+            success=True, text="How soon are you looking to sell?", handoff=False,
+            extracted={"condition": "needs a new roof"},
+        )),
+        ("within 2 months", AgentReply(
+            success=True, text="What's driving the move?", handoff=False,
+            extracted={"timeline": "within 2 months"},
+        )),
+        ("relocating for work", AgentReply(
+            success=True, text="Best number to reach you?", handoff=False,
+            extracted={"reason_for_selling": "relocating for work"},
+        )),
+        ("904-555-0100", AgentReply(
+            success=True, text="And a good time to call?", handoff=False,
+            extracted={"phone_number": "904-555-0100"},
+        )),
+        ("mornings work best", AgentReply(
+            success=True, text="Perfect, our team will reach out shortly!", handoff=True,
+            extracted={"best_time_to_call": "mornings work best"},
+        )),
+    ]
+
+    with patch("app.messenger.responder.get_user_profile", return_value={}), \
+         patch("app.messenger.responder.send_sender_action", return_value=True), \
+         patch("app.messenger.responder.send_text") as mock_send, \
+         patch("app.messenger.ai_agent.generate_reply") as mock_agent:
+        mock_send.side_effect = [SendResult(success=True, message_id=f"m_{i}") for i in range(len(turns))]
+        mock_agent.side_effect = [reply for _, reply in turns]
+
+        for i, (text, _) in enumerate(turns):
+            handle_inbound_message("psid_long", text, mid=f"mid_long_{i}", sleep=False)
+
+    # Every call after the first was told exactly what had been captured so far.
+    known_fields_per_call = [call.kwargs["known_fields"] for call in mock_agent.call_args_list]
+    assert known_fields_per_call[0] == {}  # nothing captured before the first turn
+    assert known_fields_per_call[1] == {}  # turn 0 extracted nothing
+    assert known_fields_per_call[2] == {"property_address": "123 Main St"}  # turn 1's capture
+    assert known_fields_per_call[-1] == {
+        "property_address": "123 Main St",
+        "condition": "needs a new roof",
+        "timeline": "within 2 months",
+        "reason_for_selling": "relocating for work",
+        "phone_number": "904-555-0100",
+    }
+
+    convo = db_session.scalar(select(Conversation).where(Conversation.psid == "psid_long"))
+    assert convo.property_address == "123 Main St"
+    assert convo.condition == "needs a new roof"
+    assert convo.timeline == "within 2 months"
+    assert convo.reason_for_selling == "relocating for work"
+    assert convo.phone_number == "904-555-0100"
+    assert convo.best_time_to_call == "mornings work best"
+    assert convo.status is ConversationStatus.AWAITING_HUMAN
+    assert convo.stage is FlowStage.COMPLETE

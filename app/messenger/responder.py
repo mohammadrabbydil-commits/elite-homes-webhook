@@ -40,6 +40,7 @@ from app.database.models import (
     utcnow,
 )
 from app.messenger import ai_agent
+from app.messenger.ai_agent import EXTRACTABLE_FIELDS
 from app.messenger.api import get_user_profile, send_sender_action, send_text
 
 logger = logging.getLogger(__name__)
@@ -73,6 +74,16 @@ _STAGE_FIELD: dict[FlowStage, str] = {
     FlowStage.AWAITING_PHONE: "phone_number",
     FlowStage.AWAITING_BEST_TIME: "best_time_to_call",
 }
+
+
+def _known_fields(conversation: Conversation) -> dict[str, str]:
+    """Already-captured columns on this conversation, so the AI agent is told
+    these as facts instead of having to re-infer them from raw history."""
+    return {
+        field: value
+        for field in EXTRACTABLE_FIELDS
+        if (value := getattr(conversation, field, None))
+    }
 
 
 def _next_stage(stage: FlowStage) -> FlowStage:
@@ -239,7 +250,9 @@ def _advance_flow(
     # response) falls straight through to the rigid flow below - the AI
     # layer can only add a better experience, never remove the working one.
     if settings.ai_agent_enabled and settings.openai_api_key:
-        agent_result = ai_agent.generate_reply(history or [], text)
+        agent_result = ai_agent.generate_reply(
+            history or [], text, known_fields=_known_fields(conversation)
+        )
         if agent_result.success:
             return ReplyPlan(
                 should_reply=True,
@@ -319,7 +332,9 @@ def plan_reply(
     # SELL leads continuing a flow. Same fallback discipline as mid-flow: any
     # failure here falls straight through to the scripted paths below.
     if settings.ai_agent_enabled and settings.openai_api_key:
-        agent_result = ai_agent.generate_reply(history or [], text)
+        agent_result = ai_agent.generate_reply(
+            history or [], text, known_fields=_known_fields(conversation)
+        )
         if agent_result.success:
             return ReplyPlan(
                 should_reply=True,

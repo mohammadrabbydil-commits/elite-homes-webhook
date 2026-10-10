@@ -199,16 +199,17 @@ elite-homes-poc/
 python -m pytest tests/ -q
 ```
 
-103 tests, no network access — the Graph API and the OpenAI API are both fully
+109 tests, no network access — the Graph API and the OpenAI API are both fully
 mocked. They cover the exact Graph API payload we send (endpoint selection,
 `published` flag, `scheduled_publish_time`), error and retry classification,
 insight parsing, all six models with their relationships and cascades, the
 scheduler jobs, the scripted Messenger flow (intent detection, delay bounds,
 business-hours switching, template rotation, duplicate webhook suppression,
 signature verification), the AI agent (price-guardrail enforcement, fail-closed
-behaviour on any API error, field extraction, full-pipeline integration with the
-scripted flow as fallback), and comment auto-reply (keyword matching, dedup,
-public-Page-comment exclusion).
+behaviour on any API error, one automatic retry on a network error, known-fields
+injection, history truncation, field extraction, a full long-conversation
+stress test, and full-pipeline integration with the scripted flow as fallback),
+and comment auto-reply (keyword matching, dedup, public-Page-comment exclusion).
 
 ---
 
@@ -241,9 +242,10 @@ because a seller lead is the one that matters.
 | Separate after-hours copy | A cheerful instant reply at 2 AM is obviously automated |
 | One question at a time | Real texters don't bundle three questions into one message |
 
-Delay is configurable (`AUTOREPLY_MIN_DELAY_SECONDS` / `_MAX_`) — short enough
-that the first real response still holds the lead before a competitor's does,
-long enough to not read as instant.
+Delay is configurable (`AUTOREPLY_MIN_DELAY_SECONDS` / `_MAX_`), currently
+1.5–2 minutes (client preference) — long enough that a reply never feels
+instant/automated, short enough that it still arrives while the person is
+actively in the conversation.
 
 ### Two reply engines, one fallback chain
 
@@ -332,6 +334,21 @@ matters most:
 The system prompt also injects the real current date on every call, so the
 agent can catch an inconsistent or already-past date a person gives instead
 of silently accepting it.
+
+### Staying accurate over a longer conversation
+
+- Already-captured fields (address, condition, etc.) are passed to the model
+  as explicit known facts on every call, not re-inferred from raw history —
+  it's told plainly what it already knows and never re-asks for it.
+- History sent to the model is capped at the most recent 30 messages, so a
+  long-running conversation stays fast and focused instead of growing
+  unbounded; anything extracted earlier is preserved via the known-facts list
+  above regardless of what falls out of that window.
+- One automatic retry on a dropped network call before handing off — a single
+  flaky connection shouldn't end a conversation that a retry would have
+  handled fine.
+- The prompt explicitly tells the model to read past typos, abbreviations,
+  and slang rather than getting stuck on imperfect phrasing.
 
 ### Fails closed, always
 

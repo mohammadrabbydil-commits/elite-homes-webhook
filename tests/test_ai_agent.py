@@ -148,3 +148,67 @@ def test_conversation_history_is_passed_in_role_order(with_key):
     assert sent_messages[1] == {"role": "user", "content": "hi"}
     assert sent_messages[2] == {"role": "assistant", "content": "hello, what's up?"}
     assert sent_messages[3] == {"role": "user", "content": "I want to sell"}
+
+
+def test_known_fields_are_injected_into_the_system_prompt(with_key):
+    with patch("app.messenger.ai_agent.requests.post") as mock_post:
+        mock_post.return_value = _openai_response("Got it, what condition is it in?")
+        ai_agent.generate_reply(
+            [], "it's a rental", known_fields={"property_address": "123 Main St"}
+        )
+
+    system_content = mock_post.call_args.kwargs["json"]["messages"][0]["content"]
+    assert "123 Main St" in system_content
+    assert "already known" in system_content.lower()
+
+
+def test_no_known_fields_block_when_nothing_captured_yet(with_key):
+    with patch("app.messenger.ai_agent.requests.post") as mock_post:
+        mock_post.return_value = _openai_response("ok")
+        ai_agent.generate_reply([], "hi", known_fields=None)
+        ai_agent.generate_reply([], "hi", known_fields={})
+
+    for call in mock_post.call_args_list:
+        system_content = call.kwargs["json"]["messages"][0]["content"]
+        assert "already known" not in system_content.lower()
+
+
+def test_long_history_is_truncated_to_the_most_recent_messages(with_key):
+    from app.database.models import Message, MessageDirection
+
+    history = [
+        Message(direction=MessageDirection.INBOUND, text=f"message {i}") for i in range(50)
+    ]
+    with patch("app.messenger.ai_agent.requests.post") as mock_post:
+        mock_post.return_value = _openai_response("ok")
+        ai_agent.generate_reply(history, "latest message")
+
+    sent_messages = mock_post.call_args.kwargs["json"]["messages"]
+    # 1 system + 30 history + 1 current
+    assert len(sent_messages) == 32
+    assert sent_messages[1]["content"] == "message 20"  # oldest 20 dropped
+    assert sent_messages[-2]["content"] == "message 49"
+
+
+def test_network_error_retries_once_then_succeeds(with_key):
+    import requests
+
+    with patch("app.messenger.ai_agent.requests.post") as mock_post:
+        mock_post.side_effect = [requests.RequestException("boom"), _openai_response("ok")]
+        result = ai_agent.generate_reply([], "hi")
+
+    assert mock_post.call_count == 2
+    assert result.success is True
+    assert result.text == "ok"
+
+
+def test_network_error_fails_closed_after_retry_also_fails(with_key):
+    import requests
+
+    with patch("app.messenger.ai_agent.requests.post") as mock_post:
+        mock_post.side_effect = requests.RequestException("boom")
+        result = ai_agent.generate_reply([], "hi")
+
+    assert mock_post.call_count == 2
+    assert result.success is False
+    assert result.handoff is True

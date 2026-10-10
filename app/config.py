@@ -70,10 +70,10 @@ class Settings:
         default_factory=lambda: _get("AUTOREPLY_ENABLED", "false").lower() == "true"
     )
     autoreply_min_delay_seconds: int = field(
-        default_factory=lambda: _get_int("AUTOREPLY_MIN_DELAY_SECONDS", 45)
+        default_factory=lambda: _get_int("AUTOREPLY_MIN_DELAY_SECONDS", 90)
     )
     autoreply_max_delay_seconds: int = field(
-        default_factory=lambda: _get_int("AUTOREPLY_MAX_DELAY_SECONDS", 90)
+        default_factory=lambda: _get_int("AUTOREPLY_MAX_DELAY_SECONDS", 120)
     )
     autoreply_max_per_conversation: int = field(
         default_factory=lambda: _get_int("AUTOREPLY_MAX_PER_CONVERSATION", 1)

@@ -38,6 +38,21 @@ logger = logging.getLogger(__name__)
 OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions"
 DEFAULT_TIMEOUT = 30
 
+# Oldest messages beyond this are dropped from what's sent to the model. Keeps
+# latency and cost bounded on a long-running conversation without losing the
+# information that actually matters - the known_fields block below carries
+# forward anything extracted from messages that fall out of this window.
+_MAX_HISTORY_MESSAGES = 30
+
+FIELD_LABELS: dict[str, str] = {
+    "property_address": "property address",
+    "condition": "condition",
+    "timeline": "timeline",
+    "reason_for_selling": "reason for selling",
+    "phone_number": "phone number",
+    "best_time_to_call": "best time to call",
+}
+
 # Fields the agent tries to collect over the course of a conversation -
 # matches the columns already on Conversation.
 EXTRACTABLE_FIELDS = (
@@ -52,8 +67,10 @@ EXTRACTABLE_FIELDS = (
 SYSTEM_PROMPT_TEMPLATE = """You are the Messenger assistant for Elite Homes USA, a company that buys houses as-is in Jacksonville, FL and surrounding counties. You reply to every message people send the Page - sellers, buyers, wholesalers/partners, and general questions. There is no separate scripted reply for messages you're not sure about - you are the first reply for everything, so handle it yourself or hand off, never leave it unaddressed.
 
 Today's date is {today}. Use this to reason about anything time-related - if someone gives a date or timeframe that's already in the past, or doesn't quite add up, don't just accept it silently. Ask a brief, natural clarifying question instead (e.g. "just to check, did you mean next October? This past one's already gone by").
-
+{known_fields_block}
 Tone: write like a real person quickly texting a friend who asked for help - warm, direct, a little informal. Not a script, not a form.
+
+People text messily - typos, abbreviations ("addr", "asap", "idk"), missing punctuation, slang. Read past that to what they actually mean; never comment on or correct their spelling/grammar, and never let a typo stop you from understanding a clear answer.
 
 Rules for how you write:
 - One short message. One idea or question at a time - never bundle two or three questions into a single reply, even if you're curious about more. Ask the single most useful next thing, nothing else.
@@ -69,6 +86,8 @@ Your goal with a seller: naturally learn these things over the conversation, one
 - reason_for_selling
 - phone_number
 - best_time_to_call
+
+Never ask again for something already listed as known below - check that list before every question.
 
 For anyone else (a buyer, a wholesaler, a general question, small talk) - respond helpfully and naturally in your own words; there's no fixed script for these, just be useful and accurate.
 
@@ -109,53 +128,91 @@ def _contains_price(text: str) -> bool:
     return bool(_PRICE_PATTERN.search(text))
 
 
-def _system_prompt() -> str:
+def _known_fields_block(known_fields: dict[str, str] | None) -> str:
+    if not known_fields:
+        return ""
+    listed = "; ".join(
+        f"{FIELD_LABELS.get(k, k)}: {v}" for k, v in known_fields.items() if v
+    )
+    if not listed:
+        return ""
+    return f"\nAlready known about this person (don't ask for these again): {listed}\n"
+
+
+def _system_prompt(known_fields: dict[str, str] | None = None) -> str:
     """Rebuilt each call so the model always reasons from the real current
     date, in the business's own timezone - not a stale or absent sense of
     'today', which is how it previously accepted an already-past date
-    without noticing."""
+    without noticing. Also carries forward anything already captured on the
+    conversation, as explicit facts rather than something to re-infer from
+    (possibly truncated) history."""
     from datetime import datetime
     from zoneinfo import ZoneInfo
 
     today = datetime.now(ZoneInfo(settings.timezone)).strftime("%A, %B %d, %Y")
-    return SYSTEM_PROMPT_TEMPLATE.replace("{today}", today)
+    prompt = SYSTEM_PROMPT_TEMPLATE.replace("{today}", today)
+    return prompt.replace("{known_fields_block}", _known_fields_block(known_fields))
 
 
-def _build_messages(history: list[Message], user_message: str) -> list[dict]:
-    messages = [{"role": "system", "content": _system_prompt()}]
-    for m in history:
+def _build_messages(
+    history: list[Message], user_message: str, known_fields: dict[str, str] | None
+) -> list[dict]:
+    messages = [{"role": "system", "content": _system_prompt(known_fields)}]
+    for m in history[-_MAX_HISTORY_MESSAGES:]:
         role = "assistant" if m.direction == MessageDirection.OUTBOUND else "user"
         messages.append({"role": role, "content": m.text})
     messages.append({"role": "user", "content": user_message})
     return messages
 
 
-def generate_reply(history: list[Message], user_message: str) -> AgentReply:
+def _post_to_openai(payload: dict):
+    """One retry on a network error before giving up - a single dropped
+    connection shouldn't hand a conversation to a human when trying again
+    would have worked fine."""
+    last_exc: requests.RequestException | None = None
+    for attempt in range(2):
+        try:
+            return requests.post(
+                OPENAI_CHAT_URL,
+                headers={
+                    "Authorization": f"Bearer {settings.openai_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+                timeout=DEFAULT_TIMEOUT,
+            )
+        except requests.RequestException as exc:
+            last_exc = exc
+            if attempt == 0:
+                logger.warning("AI agent network error, retrying once: %s", exc)
+    raise last_exc
+
+
+def generate_reply(
+    history: list[Message],
+    user_message: str,
+    known_fields: dict[str, str] | None = None,
+) -> AgentReply:
     """Call the AI agent for one turn of a conversation.
 
-    `history` is prior messages in the thread, oldest first. Never raises -
-    any failure (network, bad response, malformed JSON) comes back as a safe
-    AgentReply with handoff=True rather than propagating.
+    `history` is prior messages in the thread, oldest first. `known_fields` is
+    whatever has already been captured on the conversation (address,
+    condition, etc.), passed as explicit facts so the agent never re-asks for
+    something it was already told. Never raises - any failure (network, bad
+    response, malformed JSON) comes back as a safe AgentReply with
+    handoff=True rather than propagating.
     """
     if not settings.openai_api_key:
         return AgentReply(success=False, error="OPENAI_API_KEY not configured", handoff=True)
 
     payload = {
         "model": settings.ai_agent_model,
-        "messages": _build_messages(history, user_message),
+        "messages": _build_messages(history, user_message, known_fields),
         "response_format": {"type": "json_object"},
     }
 
     try:
-        response = requests.post(
-            OPENAI_CHAT_URL,
-            headers={
-                "Authorization": f"Bearer {settings.openai_api_key}",
-                "Content-Type": "application/json",
-            },
-            json=payload,
-            timeout=DEFAULT_TIMEOUT,
-        )
+        response = _post_to_openai(payload)
         data = response.json()
     except requests.RequestException as exc:
         logger.error("AI agent network error: %s", exc)
