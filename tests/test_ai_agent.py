@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import replace
 from unittest.mock import Mock, patch
 
@@ -263,6 +264,97 @@ def test_regeneration_failure_keeps_the_original_reply(with_key):
     assert result.text == "What's the best time to reach you?"
 
 
+def test_asking_the_same_question_again_triggers_regeneration(with_key):
+    """Same closing question with a different lead-in is still nagging."""
+    from app.database.models import Message, MessageDirection
+
+    history = [
+        Message(direction=MessageDirection.INBOUND, text="It needs a new roof"),
+        Message(direction=MessageDirection.OUTBOUND, text="That's okay, we buy as-is. What's the property address?"),
+    ]
+    with patch("app.messenger.ai_agent.requests.post") as mock_post:
+        mock_post.side_effect = [
+            _openai_response("Got it, within 2 months helps. What's the property address?"),
+            _openai_response("Got it, within 2 months helps. How would you like the team to follow up?"),
+        ]
+        result = ai_agent.generate_reply(history, "Within 2 months")
+
+    assert mock_post.call_count == 2
+    assert result.text == "Got it, within 2 months helps. How would you like the team to follow up?"
+
+
+def test_a_question_already_asked_twice_is_not_asked_a_third_time(with_key):
+    from app.database.models import Message, MessageDirection
+
+    history = [
+        Message(direction=MessageDirection.OUTBOUND, text="Hi! We cover Daytona. What's the property address?"),
+        Message(direction=MessageDirection.INBOUND, text="needs a new roof"),
+        Message(direction=MessageDirection.OUTBOUND, text="No problem. What timeline are you hoping for?"),
+        Message(direction=MessageDirection.INBOUND, text="2 months"),
+        Message(direction=MessageDirection.OUTBOUND, text="Got it. What's the property address so I can pass it along?"),
+        Message(direction=MessageDirection.INBOUND, text="weekday afternoons work"),
+        Message(direction=MessageDirection.OUTBOUND, text="Thanks! How would you like the team to follow up?"),
+    ]
+    with patch("app.messenger.ai_agent.requests.post") as mock_post:
+        mock_post.side_effect = [
+            _openai_response("Thanks, Dana. What's the property address?"),
+            _openai_response("Thanks, Dana. I've passed your details to the team."),
+        ]
+        result = ai_agent.generate_reply(history, "My name is Dana")
+
+    assert mock_post.call_count == 2
+    assert result.text == "Thanks, Dana. I've passed your details to the team."
+
+
+def test_a_question_asked_once_before_can_be_asked_once_more(with_key):
+    from app.database.models import Message, MessageDirection
+
+    history = [
+        Message(direction=MessageDirection.OUTBOUND, text="What's the property address?"),
+        Message(direction=MessageDirection.INBOUND, text="needs a new roof"),
+        Message(direction=MessageDirection.OUTBOUND, text="No problem. What timeline are you hoping for?"),
+    ]
+    with patch("app.messenger.ai_agent.requests.post") as mock_post:
+        mock_post.return_value = _openai_response("Got it. And what's the property address?")
+        ai_agent.generate_reply(history, "2 months")
+
+    assert mock_post.call_count == 1
+
+
+@pytest.mark.parametrize(
+    "first, second, same",
+    [
+        ("What name should I pass along to the team?", "What name should I pass along with your details?", True),
+        ("What's the property address?", "Got it. What's the property address so I can pass it along?", True),
+        ("What's the property address?", "What city is the property in?", False),
+        ("What timeline are you hoping for?", "Would you prefer a call, a text, or Messenger?", False),
+        ("What's the best number to reach you?", "What name should I pass along to the team?", False),
+    ],
+)
+def test_reworded_questions_are_recognised_as_the_same_question(first, second, same):
+    assert ai_agent._same_question(ai_agent._question_words(first), ai_agent._question_words(second)) is same
+
+
+def test_asking_a_wholesaler_for_the_deal_adds_the_team_follow_up(with_key):
+    raw = "Send the deal over first and we'll review it. What's the property address?"
+    with patch("app.messenger.ai_agent.requests.post") as mock_post:
+        mock_post.return_value = _openai_response(raw)
+        result = ai_agent.generate_reply([], "How fast can you close on an assigned contract?")
+
+    assert result.text == f"{raw} {ai_agent.TEAM_FOLLOW_UP}"
+
+
+def test_a_new_question_does_not_trigger_regeneration(with_key):
+    from app.database.models import Message, MessageDirection
+
+    history = [Message(direction=MessageDirection.OUTBOUND, text="What's the property address?")]
+    with patch("app.messenger.ai_agent.requests.post") as mock_post:
+        mock_post.return_value = _openai_response("Thanks! What kind of shape is it in?")
+        ai_agent.generate_reply(history, "123 Main St")
+
+    assert mock_post.call_count == 1
+
+
 def test_non_repeated_reply_does_not_trigger_a_second_call(with_key):
     from app.database.models import Message, MessageDirection
 
@@ -291,6 +383,30 @@ def test_em_and_en_dashes_are_stripped_from_the_reply(with_key, raw, expected):
     assert "—" not in result.text
     assert "–" not in result.text
     assert " - " not in result.text
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ("We usually look at houses 9am–5pm.", "We usually look at houses 9am to 5pm."),
+        ("It takes 90–120 seconds.", "It takes 90 to 120 seconds."),
+        ("Does Mon–Fri work?", "Does Mon to Fri work?"),
+        ("Monday – Friday works.", "Monday to Friday works."),
+        ("Homes 1,000–1,500 sq ft.", "Homes 1,000 to 1,500 sq ft."),
+        ("Within 2 - 3 weeks.", "Within 2 to 3 weeks."),
+        ("Sure―that works.", "Sure, that works."),
+        ("Got it − what's next?", "Got it, what's next?"),
+        ("We buy as‑is.", "We buy as-is."),
+        ("Text 904-555-0100 anytime.", "Text 904-555-0100 anytime."),
+    ],
+)
+def test_every_dash_character_is_removed_and_ranges_read_naturally(with_key, raw, expected):
+    with patch("app.messenger.ai_agent.requests.post") as mock_post:
+        mock_post.return_value = _openai_response(raw)
+        result = ai_agent.generate_reply([], "hi")
+
+    assert result.text == expected
+    assert not re.search("[‒-―−﹘﹣－]", result.text)
 
 
 @pytest.mark.parametrize(
@@ -373,6 +489,16 @@ def test_prompt_examples_never_use_a_dash():
     assert quoted
     for text in quoted:
         assert "—" not in text and "–" not in text and " - " not in text, text
+
+
+def test_example_bank_has_30_plus_situations_each_said_more_than_one_way():
+    """Client requirement: 30+ responses covering the situations people
+    message about, with multiple ways to say each, so it never sounds scripted."""
+    block = _render_prompt().split("EXAMPLE REPLIES")[1].split("OUTPUT")[0]
+    situations = [line for line in block.splitlines() if line.startswith("- ")]
+    assert len(situations) >= 30
+    for line in situations:
+        assert '" / "' in line, line
 
 
 def test_first_message_is_told_to_introduce_itself():

@@ -448,9 +448,12 @@ of silently accepting it.
 
 - **Never repeats itself.** The prompt explicitly forbids reusing the exact
   wording of an earlier reply in the same conversation, and a runtime check
-  (`_last_outbound_text` + `_regenerate_distinct_reply`) catches a verbatim
-  repeat if the model ignores that anyway — it gets one regeneration call
-  asking for different wording before the original ever goes out twice.
+  (`_is_repetitive` + `_regenerate_distinct_reply`) catches it if the model
+  ignores that anyway: the same reply as last time, the same closing question
+  as last time (even reworded), or a question already asked twice. It gets
+  one regeneration call asking for something different before a repeat ever
+  goes out. A skipped detail, even the address, is asked about at most twice;
+  a city or ZIP is enough for the team.
 - **Example replies from the client's own guide** (24 situations: greeting,
   a Florida city, a ZIP, price, closing speed, repairs, fees, inherited,
   tenants, moving soon, wanting a call, the team transition, realtors, hard
@@ -468,12 +471,14 @@ of silently accepting it.
   ("not sure", "soon"), the prompt tells the agent to ask one natural
   follow-up for something concrete rather than moving straight to the next
   question or rushing to hand off.
-- **Never uses a dash (client preference).** The prompt forbids an em dash,
-  en dash, or spaced hyphen used as punctuation, and `_strip_dashes` rewrites
-  one into a comma if the model reaches for it anyway. Models default to the
-  em dash by habit, so this is enforced in code, not just asked for. A
-  hyphen inside an ordinary compound word (`as-is`, `move-in`) is left alone;
-  only the dash-as-punctuation habit is targeted.
+- **Never uses a dash (client preference).** The prompt forbids the em dash
+  (—), the en dash (–), and a spaced hyphen, and `_strip_dashes` removes any
+  that slip through anyway, along with rarer dash characters (figure dash,
+  minus sign, fullwidth forms). A dash in a range becomes "to" ("9am–5pm" →
+  "9am to 5pm", "Mon–Fri" → "Mon to Fri"); anywhere else it becomes a comma.
+  Models default to these dashes by habit, so this is enforced in code, not
+  just asked for. A hyphen inside an ordinary word (`as-is`,
+  `single-family`) and phone numbers are left alone.
 
 ### Staying accurate over a longer conversation
 

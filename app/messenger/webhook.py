@@ -168,6 +168,10 @@ def create_app() -> FastAPI:
         return {
             "status": "ok",
             "autoreply_enabled": settings.autoreply_enabled,
+            "first_reply_delay_seconds": [
+                settings.autoreply_first_min_delay_seconds,
+                settings.autoreply_first_max_delay_seconds,
+            ],
             "delay_seconds": [
                 settings.autoreply_min_delay_seconds,
                 settings.autoreply_max_delay_seconds,

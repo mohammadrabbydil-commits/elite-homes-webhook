@@ -989,6 +989,10 @@ def test_fallback_and_comment_copy_never_uses_a_dash():
     for block in ("auto_reply", "seller_flow", "comment_reply"):
         collect(payload[block])
 
+    from app.messenger.responder import LEAD_NOT_SAVED_REPLY, OPT_OUT_REPLY
+    from app.messenger.ai_agent import FALLBACK_REPLY, TEAM_FOLLOW_UP
+
+    texts += [OPT_OUT_REPLY, LEAD_NOT_SAVED_REPLY, FALLBACK_REPLY, TEAM_FOLLOW_UP]
     assert texts
     for text in texts:
-        assert not re.search(r"[–—]|\s-\s", text), text
+        assert not re.search(r"[‒-―−﹘﹣－]|\s-\s", text), text

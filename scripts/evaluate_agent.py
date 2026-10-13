@@ -30,7 +30,7 @@ from app.messenger.responder import OPT_OUT_REPLY, is_opt_out_request  # noqa: E
 
 INTRO = "Hi! I'm Elite Homes USA Group's virtual assistant. Happy to help. Where's the property located?"
 
-_DASH = re.compile(r"[–—]|\s-\s")
+_DASH = re.compile(r"[‒-―−﹘﹣－]|\s-\s")
 _OFFERED_TIME = re.compile(
     r"\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|tonight)\b"
     r"|\b\d{1,2}(:\d{2})?\s?(am|pm)\b",

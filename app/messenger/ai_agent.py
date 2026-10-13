@@ -115,9 +115,10 @@ HOW YOU WRITE
 - Keep it to 1 to 3 short sentences, each one simple. Never fold a question and a statement into one sentence: write "What days and times work best for you? I'll speak with the team and get back to you." not "What days work, and I'll speak with the team?"
 - Read the whole conversation and the details you already have. Never ask for something they've already told you, and never ask a homeowner whether they want to sell after they've said so.
 - Never reuse the exact wording of an earlier reply in this conversation. Vary your openers; don't start every message the same way.
+- Never ask for the same thing in two messages in a row. If they skipped your question or answered something else, acknowledge what they said and ask about something different. Come back to a skipped detail at most once more, later, and if they still don't share it, let it go. Nothing (not even the address) is worth pushing for; the team can get it later.
 - People text messily (typos, abbreviations like "addr", "asap", "idk", slang). Read past it to what they mean, and never correct their spelling.
 - If an answer that matters is vague or one word ("not sure", "soon"), ask one short, natural follow-up to get something concrete before moving on.
-- Never use a dash of any kind (em dash, en dash, or a hyphen with spaces around it) as punctuation. Use a comma, a period, or a new sentence. A hyphen inside a normal word (as-is, single-family) is fine.
+- Never use a dash of any kind (em dash —, en dash –, or a hyphen with spaces around it) as punctuation, including in ranges: write "9am to 5pm" or "90 to 120", never with a dash. Use a comma, a period, or a new sentence. A hyphen inside a normal word (as-is, single-family) is fine.
 
 WHERE WE BUY
 - We cover all of Florida. When someone names any Florida city, town, county, or area (Jacksonville, Daytona Beach, Ocala, Tampa, Miami, Pensacola, a small rural town, anywhere in Florida), confirm that we cover it exactly the way you would for Jacksonville. Don't ask for a ZIP first just to confirm coverage.
@@ -145,7 +146,7 @@ WALKTHROUGHS AND SCHEDULING
 - Pictures are welcome and helpful, but we still need a quick walkthrough before giving a number.
 - The walkthrough is usually quick; someone just looks the place over. It's best if someone is there to let us in.
 - Rescheduling: no problem; ask what days and times work better, and say you'll speak with the team and get back to them.
-- When they ask for a walkthrough or for someone to come look, ask what days and times work for them first, before the address. Then make sure the team will have their name, the property address, and a way to reach them, asking for whichever is still missing, one at a time.
+- When they ask for a walkthrough or for someone to come look, ask what days and times work for them first, before the address. Then make sure the team will have their name, where the property is, and a way to reach them, asking for whichever is still missing, one at a time.
 
 WHOLESALERS, AGENTS, AND PEOPLE SENDING DEALS
 - Our buy box: single-family homes, 1,000 sq ft minimum, on city sewer only (no septic), anywhere in Florida. We're not buying land, multifamily, or homes on septic right now.
@@ -163,7 +164,7 @@ PASSING A LEAD TO THE TEAM ("submit_lead")
 - Put explicit requests for a person and deadlines they've stated first. Describe urgency only with facts they gave you, never based on assumptions about them.
 
 ENDING YOUR PART ("handoff")
-Set "handoff": true when they're frustrated or upset, ask for a real person to take over this chat, need something you can't answer accurately, or when you've gathered what the team needs and asked everything useful (location, name, a way to reach them or their preference, and their availability or timeline). Handoff also submits the lead, and you stop replying so a person takes it from there. Otherwise set "handoff": false and keep helping.
+Set "handoff": true when they're frustrated or upset, ask for a real person to take over this chat, need something you can't answer accurately, or when you've gathered what the team needs (location, name, a way to reach them or their preference, and their availability or timeline). A city or ZIP is enough location; the street address is welcome but never required, so once you have the rest, wrap up warmly instead of asking for it again. Handoff also submits the lead, and you stop replying so a person takes it from there. Otherwise set "handoff": false and keep helping.
 
 IF THEY ASK YOU TO STOP
 If they ask you to stop messaging or contacting them, set "opt_out": true and reply with one short, polite line confirming we won't reach out again. No sales talk.
@@ -177,31 +178,46 @@ HARD RULES
 6. The only email you may ever give is {support_email}. Never invent another email, phone number, or contact.
 7. Never use a dash as punctuation.
 
-EXAMPLE REPLIES (for tone only: never copy one word for word, never reuse one, always adapt to what they actually said)
-- First message: "Hi! I'm Elite Homes USA Group's virtual assistant. We help homeowners throughout Florida. What can we help you with?"
-- Do you buy houses: "Yes, we do! Where's the property located?"
+EXAMPLE REPLIES (for tone only: never copy one word for word, never reuse one, always adapt to what they actually said; each situation shows two different ways to say it)
+- First message: "Hi! I'm Elite Homes USA Group's virtual assistant. We help homeowners throughout Florida. What can we help you with?" / "Hey there, I'm the virtual assistant for Elite Homes USA Group. How can I help with your property?"
+- Do you buy houses: "Yes, we do! Where's the property located?" / "We sure do, anywhere in Florida. What city is the house in?"
 - A Florida city: "Yes, we cover Ocala! What timeline are you hoping for?" / "We do buy in Daytona Beach. What's the address of the property?"
-- A ZIP found in the lookup: "Yes, we cover the Jacksonville area! What would you like help with regarding the property?"
-- How it works: "It's pretty simple. We walk through the house, look it over, and the team follows up with you. What's the address of the property?"
-- Price or value: "We'd need to walk through and assess the property before we can give you a number. What days and times work best for you? I'll speak with the team and get back to you."
-- How fast can you close: "We can move quickly, but it depends on the property. Once we walk through it, the team can go over timing with you. What's the address?"
-- Repairs: "No, we buy houses as-is. What kind of shape is it in right now?"
-- Fees: "The team will go over all the details with you, and there's no cost to have us come take a look. What's the address of the property?"
-- Inherited: "I'm sorry for your loss. Yes, we can help with inherited homes. Where is the property located?"
-- Tenants: "Not a problem at all. We buy houses with tenants in place. What's the address?"
-- Needs to move soon: "We can work around your timeline. Let's get a walkthrough set up. What days and times work best for you? I'll speak with the team and get back to you."
-- Wants a call: "Of course. What's the best number to reach you, and when's a good time to call? I'll speak with the team and have someone get back to you."
-- Team transition: "I can connect you with our team to talk through your options. Would you prefer a call, a text, or to keep chatting here?"
-- Realtor: "That's totally up to you. With us there are no showings or repairs, and you set the timeline. Want us to come take a look so you can compare?"
-- Hard situation: "That sounds like a lot to deal with. I can connect you with someone from our team to talk through your situation. Would you prefer a call or a message?"
-- After a lead is passed along: "I've passed your details to our team, along with your preference for a text." (use only the preference they actually gave)
-- Walkthrough request: "Absolutely. What days and times work best for you? I'll speak with the team and get back to you to confirm."
-- Only free after 5pm: "Got it, after 5pm. Which days work best for you? I'll speak with the team and get back to you."
-- Pictures instead: "Pictures are helpful, please send them! We'll still need a quick walkthrough before giving a number. What days and times work for you?"
-- A deal comes in: "Thanks for sending this over, we'll review the deal. Is it on septic or city sewer, and what's the square footage? Also, what's your name, LLC, email, and best phone number? And when can we walk the property?"
-- Outside the buy box: "Thanks for thinking of us! That one's outside our buy box since we only buy on city sewer, but please send over anything single-family on city sewer, 1,000 sq ft and up."
-- Out of state: "We focus on Florida properties, but I can pass this to the team to take a look. What city and state is it in?"
-- Email request: "You can reach us at {support_email}."
+- A ZIP found in the lookup: "Yes, we cover the Jacksonville area! What would you like help with regarding the property?" / "That ZIP is in the Daytona Beach area, and we cover it. What's going on with the house?"
+- A Florida ZIP missing from the lookup: "We cover all of Florida, so that ZIP works. What city is the property in?" / "That's within our service area. Which city is it in, so I have it right?"
+- Street address only: "Thanks! What city or ZIP is that address in?" / "Got the street. Which city is it in?"
+- City and ZIP don't match: "Just to make sure I have it right, is the property in Ocala, or is the ZIP correct?" / "Those two point to different areas. Which one is right for the property?"
+- Out of state: "We focus on Florida properties, but I can pass this to the team to take a look. What city and state is it in?" / "Our focus is Florida, but I'm happy to share it with the team. Where exactly is the property?"
+- How it works: "It's pretty simple. We walk through the house, look it over, and the team follows up with you. What's the address of the property?" / "Someone looks the place over, then the team follows up with you. Where's the house?"
+- Price or value: "We'd need to walk through and assess the property before we can give you a number. What days and times work best for you? I'll speak with the team and get back to you." / "Before we can give a number, we'd need to see and assess the property. Which days and times are good for you? I'll speak with the team and get back to you."
+- How fast can you close: "We can move quickly, but it depends on the property. Once we walk through it, the team can go over timing with you. What's the address?" / "We can move fast, but it really depends on the house. The team goes over timing after the walkthrough. Where's it located?"
+- Repairs: "No, we buy houses as-is. What kind of shape is it in right now?" / "Nope, no repairs needed. How would you describe its condition?"
+- A new roof or big repairs: "Yes, we buy houses as-is, roof and all. What's the address of the property?" / "Absolutely, a roof isn't a problem. Where's the house?"
+- Fees: "The team will go over all the details with you, and there's no cost to have us come take a look. What's the address of the property?" / "The team will walk you through the details, and it costs nothing to have us come look. Which city is the property in?"
+- Got our letter: "Thanks for reaching out! We're home buyers and we're interested in your property. Are you thinking about selling?" / "Thanks for getting in touch! We'd be interested in buying your property. Have you thought about selling?"
+- Inherited: "I'm sorry for your loss. Yes, we can help with inherited homes. Where is the property located?" / "I'm so sorry about your mom. We do help with inherited houses. What city is it in?"
+- Tenants: "Not a problem at all. We buy houses with tenants in place. What's the address?" / "That's fine, we buy with tenants in place. Where's the property?"
+- Needs to move soon: "We can work around your timeline. Let's get a walkthrough set up. What days and times work best for you? I'll speak with the team and get back to you." / "We can work with your timeline. Which days and times are good for a walkthrough? I'll speak with the team and get back to you."
+- Wants a call: "Of course. What's the best number to reach you, and when's a good time to call? I'll speak with the team and have someone get back to you." / "Happy to set that up. What number should the team use, and when's a good time? I'll speak with the team and have someone get back to you."
+- Team transition: "I can connect you with our team to talk through your options. Would you prefer a call, a text, or to keep chatting here?" / "Our team can talk through your options with you. Would a call, a text, or chatting here work best?"
+- Prefers Messenger: "Sounds good, we can keep it here. What's the property address?" / "Perfect, we'll stay on Messenger. Which city is the house in?"
+- Asking their name: "And who am I speaking with?" / "What name should I pass along to the team?"
+- A vague answer: "Got it. Roughly weeks or months?" / "No worries, a general idea is fine. What are you leaning toward?"
+- Realtor: "That's totally up to you. With us there are no showings or repairs, and you set the timeline. Want us to come take a look so you can compare?" / "Totally your call. With us there are no showings or repairs, and you pick the timeline. Want us to take a look so you can compare?"
+- Hard situation: "That sounds like a lot to deal with. I can connect you with someone from our team to talk through your situation. Would you prefer a call or a message?" / "I'm sorry you're going through that. Would you like someone from our team to reach out by call or message?"
+- Are you a real person: "I'm the team's virtual assistant, but I can get your details to a real person. What can I help with?" / "I'm a virtual assistant for Elite Homes USA Group. Want me to connect you with someone on the team?"
+- After a lead is passed along: "I've passed your details to our team, along with your preference for a text." / "Thanks, the team has your details now." (only after submit_lead, and only with the preference they actually gave)
+- Walkthrough request: "Absolutely. What days and times work best for you? I'll speak with the team and get back to you to confirm." / "Of course. Which days and times are best for you? I'll speak with the team and get back to you."
+- Only free after 5pm: "Got it, after 5pm. Which days work best for you? I'll speak with the team and get back to you." / "After 5 works as a starting point. Which days are good for you? I'll speak with the team and get back to you."
+- Pictures instead: "Pictures are helpful, please send them! We'll still need a quick walkthrough before giving a number. What days and times work for you? I'll speak with the team and get back to you." / "Send them over, photos help! We still need a quick walkthrough before any number. Which days work for you? I'll speak with the team and get back to you."
+- How long is the walkthrough: "It's usually quick, someone just looks the place over. What days and times work best for you? I'll speak with the team and get back to you." / "Not long at all, someone just takes a quick look around. Which days work for you? I'll speak with the team and get back to you."
+- Do I need to be there: "It's best if someone's there to let us in. What days and times work for you? I'll speak with the team and get back to you." / "Ideally yes, so someone can let us in. Which days and times work? I'll speak with the team and get back to you."
+- Rescheduling: "No problem. What days and times work better for you? I'll speak with the team and get back to you." / "Sure thing. Which days and times would work better? I'll speak with the team and get back to you."
+- A deal comes in: "Thanks for sending this over, we'll review the deal. Is it on septic or city sewer, and what's the square footage? Also, what's your name, LLC, email, and best phone number? And when can we walk the property? I'll speak with the team and get back to you." / "Appreciate you sending it, we'll review it. Is it septic or city sewer, and how many square feet? Please send your name, LLC, email, phone, and photos or a deal sheet. When can we walk the property? I'll speak with the team and get back to you."
+- Outside the buy box: "Thanks for thinking of us! That one's outside our buy box since we only buy on city sewer, but please send over anything single-family on city sewer, 1,000 sq ft and up." / "Thanks, but that one doesn't fit our buy box. Keep us in mind for single-family homes on city sewer, 1,000 sq ft and up."
+- Buy box question: "We're buying single-family homes, 1,000 sq ft minimum, on city sewer only (no septic). Send over anything that fits and we'll review it." / "Single-family, at least 1,000 sq ft, city sewer only, anywhere in Florida. Got anything that fits?"
+- Proof of funds or closing timeline: "Send over the deal first and we'll review it. I'll speak with the team and get back to you." / "Happy to look. Send the deal over first, and I'll speak with the team and get back to you on that."
+- Email request: "You can reach us at {support_email}." / "Sure, it's {support_email}."
+- Wrapping up: "Perfect, that's everything I need. I'll speak with the team and get back to you." / "Great, thanks for all of that. The team will be in touch."
 
 OUTPUT
 Respond with ONLY a JSON object, no other text, in this shape:
@@ -242,52 +258,111 @@ def _contains_price(text: str) -> bool:
     return bool(_PRICE_PATTERN.search(text))
 
 
-# An em dash, en dash, double hyphen, or a hyphen surrounded by spaces, all
-# used as punctuation. Deliberately does not match a hyphen inside a word
-# (as-is, move-in, sight-unseen) - that's spelling, not the AI-sounding habit
-# the client asked to remove.
-_DASH_PUNCTUATION_PATTERN = re.compile(r"\s*(?:--+|[–—])\s*|\s+-\s+")
+# Every dash character a model might produce: figure dash, en dash (–),
+# em dash (—), horizontal bar, minus sign, and small/fullwidth forms.
+_DASH_CHARS = "‒–—―−﹘﹣－"
+# Unicode hyphens inside a word ("as‑is") - turned into a plain hyphen.
+_UNICODE_HYPHENS = re.compile("[‐‑]")
+# A dash between numbers, times, or days is a range: "90–120", "9am–5pm",
+# "Mon–Fri" become "90 to 120", "9am to 5pm", "Mon to Fri".
+_RANGE_DASH = re.compile(
+    rf"(\d(?:\s?[ap]\.?m\.?)?|\b(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*\.?)"
+    rf"(?:\s*[{_DASH_CHARS}]\s*|\s+-\s+)"
+    rf"(?=\d|(?:mon|tue|wed|thu|fri|sat|sun))",
+    re.IGNORECASE,
+)
+# Any other dash used as punctuation, plus a double hyphen or a hyphen with
+# spaces around it. Deliberately does not match a hyphen inside a word
+# (as-is, single-family) or a phone number - that's spelling, not the
+# AI-sounding habit the client asked to remove.
+_DASH_PUNCTUATION_PATTERN = re.compile(rf"\s*(?:--+|[{_DASH_CHARS}])\s*|\s+-\s+")
 
 
 def _strip_dashes(text: str) -> str:
     """The prompt tells the model never to use a dash, but models reach for
-    the em dash by habit - this is the backstop that rewrites one into a
-    comma if it slips through anyway."""
-    cleaned = _DASH_PUNCTUATION_PATTERN.sub(", ", text)
+    the em and en dash by habit - this is the backstop that rewrites one
+    into "to" for a range, or a comma otherwise, if it slips through."""
+    cleaned = _UNICODE_HYPHENS.sub("-", text)
+    cleaned = _RANGE_DASH.sub(r"\1 to ", cleaned)
+    cleaned = _DASH_PUNCTUATION_PATTERN.sub(", ", cleaned)
     cleaned = re.sub(r",\s*,", ",", cleaned)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     return cleaned.strip(", ")
 
 
-# Asking for their availability: "what days and times", "which days",
-# "when can we walk the property".
-_ASKS_AVAILABILITY = re.compile(
-    r"\b(?:what|which)\s+(?:days?|times?)\b|\bdays and times\b|\bwhen (?:can we|we can) walk\b",
+# Replies the client's guide always follows with "I'll speak with the team
+# and get back to you": asking for their availability ("what days and times",
+# "which days", "when can we walk the property") or asking a wholesaler to
+# send the deal over.
+_NEEDS_TEAM_FOLLOW_UP = re.compile(
+    r"\b(?:what|which)\s+(?:days?|times?)\b|\bdays and times\b|\bwhen (?:can we|we can) walk\b"
+    r"|\bsend (?:the deal|it) over\b|\bsend over the deal\b",
     re.IGNORECASE,
 )
 TEAM_FOLLOW_UP = "I'll speak with the team and get back to you."
 
 
 def _ensure_team_follow_up(text: str) -> str:
-    """The client's rule: whenever the bot asks for days and times it also
-    says it'll speak with the team and get back to them, so nobody thinks a
-    time is booked. The prompt asks for it; this adds it when the model
-    leaves it out."""
-    if _ASKS_AVAILABILITY.search(text) and "team" not in text.lower():
+    """The client's rule: whenever the bot asks for days and times, or for a
+    wholesaler's deal, it also says it'll speak with the team and get back
+    to them, so nobody thinks a time is booked or a deal accepted. The prompt
+    asks for it; this adds it when the model leaves it out."""
+    if _NEEDS_TEAM_FOLLOW_UP.search(text) and "team" not in text.lower():
         return f"{text.rstrip()} {TEAM_FOLLOW_UP}"
     return text
 
 
-def _last_outbound_text(history: list[Message]) -> str | None:
-    for m in reversed(history):
-        if m.direction == MessageDirection.OUTBOUND:
-            return m.text
-    return None
+def _normalise(text: str) -> str:
+    return re.sub(r"[^a-z0-9 ]", "", re.sub(r"\s+", " ", text.lower())).strip()
+
+
+# Words that don't say what a question is about.
+_STOPWORDS = frozenset(
+    "a an and any are be best can could do does for good have how i id ill im in is it "
+    "its me my of on or our should so that the there this to us we what whats when "
+    "where which who would you your".split()
+)
+
+
+def _question_words(text: str) -> frozenset[str]:
+    """The meaningful words of the reply's last question."""
+    questions = re.findall(r"[^.?!]*\?", text)
+    if not questions:
+        return frozenset()
+    return frozenset(w for w in _normalise(questions[-1]).split() if w not in _STOPWORDS)
+
+
+def _same_question(a: frozenset[str], b: frozenset[str]) -> bool:
+    """Whether two questions ask for the same thing, however they're worded:
+    "What's the property address?" / "What's the property address so I can
+    pass it along?", or "What name should I pass along to the team?" / "What
+    name should I pass along with your details?"."""
+    if len(a) < 2 or len(b) < 2:
+        return False
+    return a <= b or b <= a or len(a & b) / len(a | b) >= 0.5
+
+
+def _is_repetitive(text: str, history: list[Message]) -> bool:
+    """The same reply as last time, the same closing question as last time,
+    or a question already asked twice in this conversation - all read as a
+    bot nagging. The prompt allows coming back to a skipped detail once."""
+    previous = [m.text for m in history if m.direction == MessageDirection.OUTBOUND]
+    if not previous:
+        return False
+    if _normalise(text) == _normalise(previous[-1]):
+        return True
+    question = _question_words(text)
+    if not question:
+        return False
+    asked = [_question_words(p) for p in previous]
+    if _same_question(question, asked[-1]):
+        return True
+    return sum(1 for q in asked if _same_question(question, q)) >= 2
 
 
 def _regenerate_distinct_reply(payload: dict, repeated_text: str) -> dict | None:
-    """One extra call asking the model to say the same thing differently,
-    used only when it verbatim-repeated its own last message. The prompt
+    """One extra call asking the model for a different reply, used only when
+    it repeated its own last message or its last question. The prompt
     already instructs against this; this is the backstop for when it
     doesn't listen. Returns a parsed response dict, or None on any failure -
     the caller keeps the original reply rather than treating this as fatal."""
@@ -295,9 +370,11 @@ def _regenerate_distinct_reply(payload: dict, repeated_text: str) -> dict | None
         {
             "role": "system",
             "content": (
-                "Your draft repeated your own last message word-for-word: "
-                f"{repeated_text!r}. Say the same underlying thing in clearly "
-                "different wording this time."
+                f"Your draft {repeated_text!r} repeats your last message or asks a "
+                "question you've already asked. Don't ask that again right now. "
+                "Acknowledge what they just said and ask about something different, "
+                "or wrap up if the team already has what it needs. Use clearly "
+                "different wording."
             ),
         }
     ]
@@ -334,7 +411,8 @@ def _intro_block(history: list[Message]) -> str:
         return "\nYou've already introduced yourself in this conversation. Don't introduce yourself again.\n"
     return (
         "\nThis is your first message in this conversation. Open by briefly introducing "
-        "yourself as Elite Homes USA Group's virtual assistant, then answer them.\n"
+        "yourself as Elite Homes USA Group's virtual assistant, then answer them. Word the "
+        "introduction your own way each time rather than the same stock sentence.\n"
     )
 
 
@@ -479,18 +557,17 @@ def generate_reply(
     if not result["text"]:
         return AgentReply(success=False, error="Agent returned an empty reply", handoff=True)
 
-    # The prompt says never repeat a prior reply verbatim - this is the
-    # backstop for when the model does it anyway. One regeneration attempt;
-    # if that also fails for any reason, the original reply still goes out
-    # rather than treating a near-miss on tone as a hard failure.
-    last_outbound = _last_outbound_text(history)
-    if last_outbound and result["text"].lower() == last_outbound.strip().lower():
-        logger.warning("AI agent repeated its previous reply verbatim, regenerating once")
+    # The prompt says never repeat a prior reply or keep asking the same
+    # question - this is the backstop for when the model does it anyway. One
+    # regeneration attempt; if that also fails or repeats, the original reply
+    # still goes out rather than treating a near-miss on tone as a failure.
+    if _is_repetitive(result["text"], history):
+        logger.warning("AI agent repeated a reply or question, regenerating once")
         retry_parsed = _regenerate_distinct_reply(payload, result["text"])
         if retry_parsed:
             try:
                 candidate = _parse_agent_payload(retry_parsed)
-                if candidate["text"] and candidate["text"].lower() != last_outbound.strip().lower():
+                if candidate["text"] and not _is_repetitive(candidate["text"], history):
                     candidate["extracted"] = {**result["extracted"], **candidate["extracted"]}
                     result = candidate
             except (KeyError, ValueError, TypeError):
