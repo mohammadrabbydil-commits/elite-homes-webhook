@@ -52,6 +52,7 @@ SUBMITS = ("passes the lead to the team", lambda r, s: r.submit_lead or r.handof
 ASKS = ("asks a question", lambda r, s: "?" in r.text)
 NO_PHONE_ASK = ("doesn't ask for a phone number", lambda r, s: not re.search(r"\b(number|phone)\b", r.text, re.I))
 EMAIL = ("gives the support email", lambda r, s: ai_agent.SUPPORT_EMAIL.lower() in r.text.lower())
+MEETING = ("shares the booking link", lambda r, s: ai_agent.MEETING_LINK in r.text)
 ASKS_AVAILABILITY = ("asks their days/times", lambda r, s: bool(re.search(r"\b(days?|times?|when)\b", r.text, re.I)))
 DEFERS_TO_TEAM = ("says they'll check with the team", lambda r, s: "team" in r.text.lower())
 
@@ -187,6 +188,41 @@ SCENARIOS = [
         "checks": [has("walk"), has("photo", "deal sheet", "pictures"), lacks("septic or city sewer", "square footage", "what's your name", "your llc"), SUBMITS],
     },
     {"id": "P21", "group": "Conversation", "message": "What's your email?", "checks": [EMAIL]},
+    # --- Meetings and the booking link ---
+    {"id": "M1", "group": "Meetings", "message": "Can we set up a meeting?", "checks": [MEETING, SUBMITS]},
+    {
+        "id": "M2", "group": "Meetings", "message": "Share a meeting link",
+        "history": [
+            ("in", "I have a house in Jacksonville"), ("out", INTRO),
+            ("in", "can someone come look at it"),
+            ("out", "Sure, what days and times work best for you? I'll speak with the team and get back to you."),
+        ],
+        "known": {"city": "Jacksonville"},
+        "checks": [NO_REINTRO, MEETING, lacks("don't have a meeting link", "do not have a meeting link")],
+    },
+    {
+        "id": "M3", "group": "Meetings", "message": "My name is Dana",
+        "history": [
+            ("in", "Hi, I have a house in 32114 I need to sell"),
+            ("out", "Hi, I'm Elite Homes USA Group's virtual assistant. We cover the Daytona Beach area. What shape is the house in?"),
+            ("in", "needs a new roof"), ("out", "No problem, we buy as-is. What timeline are you hoping for?"),
+            ("in", "within 2 months"), ("out", "Got it. Would you prefer the team follow up by call, text, or here on Messenger?"),
+            ("in", "text is best, 904-555-0100. weekday afternoons"),
+            ("out", "Thanks, texting works. What name should I pass along to the team?"),
+        ],
+        "known": {
+            "zip_code": "32114", "city": "Daytona Beach", "county": "Volusia County",
+            "condition": "needs a new roof", "timeline": "within 2 months",
+            "contact_preference": "text", "phone_number": "904-555-0100", "availability": "weekday afternoons",
+        },
+        "checks": [NO_REINTRO, MEETING, SUBMITS],
+        "note": "Everything the team needs is in, so the bot should wrap up and invite them to book a time.",
+    },
+    {
+        "id": "M4", "group": "Meetings", "message": "Do you buy houses in Atlanta?",
+        "checks": [lacks(ai_agent.MEETING_LINK)],
+        "note": "Out of state, so no booking invite.",
+    },
 ]
 
 

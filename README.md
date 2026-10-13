@@ -415,6 +415,14 @@ policy (`BOT_INSTRUCTIONS`, 2026-10-12) and the 35-question response guide
   deal sheet, then "When can we walk the property?". Deals outside the buy box
   get a thank-you and a request for ones that fit. Deal sheets go to
   `Ellis@elitehomes1.com`.
+- **Meetings.** Anyone asking for a meeting, an appointment, or a link to
+  book gets `MEETING_LINK` (`/schedule`, which redirects to the booking tool
+  set as `BOOKING_URL` in `app/pages/explainers.py`). When wrapping up with an
+  interested homeowner or a wholesaler whose deal fits, the last message also
+  invites them to book a time there, but not for out-of-state properties,
+  deals outside the buy box, or anyone upset or opted out. It's the only link
+  the agent may share, and the link lets them pick their own time, so the
+  agent still never names days or times itself.
 - **Structured output.** Every reply comes back with the message, the intent
   (homeowner or wholesaler), whether to submit the lead, whether to hand off,
   whether they asked to stop, the details they gave, and a short factual

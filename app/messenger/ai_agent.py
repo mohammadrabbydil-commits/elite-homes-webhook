@@ -45,6 +45,11 @@ DEFAULT_TIMEOUT = 45
 # never invented or substituted.
 SUPPORT_EMAIL = "Ellis@elitehomes1.com"
 
+# The one booking link the agent shares. It redirects to the booking tool
+# (app.pages.explainers.BOOKING_URL), so the tool can change without
+# touching the agent.
+MEETING_LINK = "https://elite-homes-webhook.onrender.com/schedule"
+
 # Oldest messages beyond this are dropped from what's sent to the model. Keeps
 # latency and cost bounded on a long-running conversation without losing the
 # information that actually matters - the known_fields block below carries
@@ -157,6 +162,12 @@ WHOLESALERS, AGENTS, AND PEOPLE SENDING DEALS
 - Deal sheets can be emailed to {support_email}. Ask them to include their name, LLC, phone, and whether it's on septic or city sewer.
 - Never repeat or comment on their numbers (asking price, ARV) in your reply.
 
+MEETINGS AND THE BOOKING LINK
+- If they ask for a meeting, an appointment, a consultation, a call to be booked, or a link to schedule, share the booking link exactly as written: {meeting_link}. Tell them they can pick a time that works for them there, and set "submit_lead": true.
+- When you're wrapping up with someone who's interested (a homeowner thinking about selling, or a wholesaler with a deal that fits), end your last message by inviting them to book a time with the team at {meeting_link}. Skip it for someone out of state, outside the buy box, not interested, upset, or who asked us to stop.
+- Share the link only when it fits, not in every message. Once you've sent it, don't send it again unless they ask for it.
+- The link lets them choose their own time, so sharing it never counts as offering days or times. You still never name specific days or times yourself.
+
 PASSING A LEAD TO THE TEAM ("submit_lead")
 - Set "submit_lead": true when they ask for a person, a call or callback, an offer or a number, a walkthrough or consultation, or clearly want to talk with the team about selling, and when a wholesaler sends a deal. Missing details are fine; don't wait for everything.
 - A general question about where we buy is not permission to call or text them. Only record a contact preference they actually gave.
@@ -175,7 +186,7 @@ HARD RULES
 3. Never guarantee a closing date, an outcome, or that we'll buy a property.
 4. Never invent anything: offers, valuations, appointments, fees, policies, outcomes, testimonials, team members, or local experience. If you don't know, say you'll check with the team, and hand off.
 5. Stay on topic: Elite Homes USA Group's business. For anything unrelated, be polite and steer back.
-6. The only email you may ever give is {support_email}. Never invent another email, phone number, or contact.
+6. The only email you may ever give is {support_email}, and the only link is {meeting_link}. Never invent another email, phone number, link, or contact.
 7. Never use a dash as punctuation.
 
 EXAMPLE REPLIES (for tone only: never copy one word for word, never reuse one, always adapt to what they actually said; each situation shows two different ways to say it)
@@ -217,7 +228,8 @@ EXAMPLE REPLIES (for tone only: never copy one word for word, never reuse one, a
 - Buy box question: "We're buying single-family homes, 1,000 sq ft minimum, on city sewer only (no septic). Send over anything that fits and we'll review it." / "Single-family, at least 1,000 sq ft, city sewer only, anywhere in Florida. Got anything that fits?"
 - Proof of funds or closing timeline: "Send over the deal first and we'll review it. I'll speak with the team and get back to you." / "Happy to look. Send the deal over first, and I'll speak with the team and get back to you on that."
 - Email request: "You can reach us at {support_email}." / "Sure, it's {support_email}."
-- Wrapping up: "Perfect, that's everything I need. I'll speak with the team and get back to you." / "Great, thanks for all of that. The team will be in touch."
+- Asks for a meeting or a booking link: "Of course! You can pick a time that works for you here: {meeting_link}" / "Sure, here's the link to book a time with the team: {meeting_link}"
+- Wrapping up: "Perfect, that's everything I need. I'll speak with the team and get back to you, and if you'd like, you can book a time with them here: {meeting_link}" / "Great, thanks for all of that. If it's easier, you can grab a time with the team here: {meeting_link}"
 
 OUTPUT
 Respond with ONLY a JSON object, no other text, in this shape:
@@ -435,6 +447,7 @@ def _system_prompt(
     prompt = prompt.replace("{intro_block}", _intro_block(history or []))
     prompt = prompt.replace("{known_fields_block}", _known_fields_block(known_fields))
     prompt = prompt.replace("{location_block}", _location_block(location_facts))
+    prompt = prompt.replace("{meeting_link}", MEETING_LINK)
     return prompt.replace("{support_email}", SUPPORT_EMAIL)
 
 

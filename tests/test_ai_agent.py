@@ -478,8 +478,28 @@ def test_prompt_is_an_honest_virtual_assistant_that_ignores_injected_instruction
 
 def test_prompt_has_no_unfilled_placeholders():
     prompt = _render_prompt(known_fields={"city": "Ocala"}, location_facts=["ZIP 34470: Ocala"])
-    for placeholder in ("{today}", "{intro_block}", "{known_fields_block}", "{location_block}", "{support_email}"):
+    for placeholder in (
+        "{today}", "{intro_block}", "{known_fields_block}", "{location_block}",
+        "{support_email}", "{meeting_link}",
+    ):
         assert placeholder not in prompt
+
+
+def test_prompt_shares_the_booking_link_for_meetings_and_at_the_wrap_up():
+    prompt = _render_prompt()
+    assert f"share the booking link exactly as written: {ai_agent.MEETING_LINK}" in prompt
+    assert f"inviting them to book a time with the team at {ai_agent.MEETING_LINK}" in prompt
+    assert f"the only link is {ai_agent.MEETING_LINK}" in prompt
+
+
+def test_booking_link_survives_the_reply_safeguards_unchanged(with_key):
+    raw = f"Of course! You can pick a time that works for you here: {ai_agent.MEETING_LINK}"
+    with patch("app.messenger.ai_agent.requests.post") as mock_post:
+        mock_post.return_value = _openai_response(raw, extracted={})
+        result = ai_agent.generate_reply([], "Can you share a meeting link?")
+
+    assert result.text == raw
+    assert result.safety_blocked is False
 
 
 def test_prompt_examples_never_use_a_dash():

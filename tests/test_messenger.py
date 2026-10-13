@@ -338,6 +338,9 @@ def test_flow_collects_every_answer_then_hands_off(db_session, enabled):
 
     closing = _load_seller_flow_config()["closing_message"]
     assert plans[-1].text == closing
+    from app.messenger.ai_agent import MEETING_LINK
+
+    assert MEETING_LINK in closing
 
 
 def test_faq_quick_reply_answers_without_advancing_the_flow(db_session, enabled):
