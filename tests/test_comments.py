@@ -132,6 +132,35 @@ def test_comment_from_the_page_itself_is_ignored(db_session, enabled):
     mock_public.assert_not_called()
 
 
+def test_commenter_who_opted_out_is_never_messaged_again(db_session, enabled):
+    db_session.add(Conversation(psid="user_1", status=ConversationStatus.CLOSED, opted_out=True))
+    db_session.commit()
+
+    with patch("app.messenger.comment_responder.reply_to_comment") as mock_public, \
+         patch("app.messenger.comment_responder.send_private_reply") as mock_private:
+        result = handle_inbound_comment("comment_1", "user_1", "do you buy houses?", "Dana")
+
+    assert result == {"handled": False, "reason": "contact opted out"}
+    mock_public.assert_not_called()
+    mock_private.assert_not_called()
+
+
+def test_public_reply_never_asks_for_an_address_or_contact_details():
+    from app.messenger.comment_responder import _load_comment_reply_config
+
+    for text in _load_comment_reply_config()["public_replies"]:
+        lowered = text.lower()
+        assert "address" not in lowered and "phone" not in lowered and "number" not in lowered
+
+
+def test_private_reply_introduces_the_virtual_assistant_and_asks_where_the_property_is():
+    from app.messenger.comment_responder import _load_comment_reply_config
+
+    private = _load_comment_reply_config()["private_reply"].lower()
+    assert "virtual assistant" in private
+    assert "city or zip" in private
+
+
 def test_comment_reply_copy_never_mentions_price():
     from app.messenger.comment_responder import _load_comment_reply_config
 

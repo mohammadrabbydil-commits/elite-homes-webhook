@@ -433,29 +433,53 @@ def cmd_webhook(args: argparse.Namespace) -> int:
 
 
 def cmd_inbox(args: argparse.Namespace) -> int:
-    """Show conversations waiting on a human."""
+    """Show leads for the team: handed-off conversations and submitted leads."""
     from app.database.db import init_db
     from app.messenger.responder import pending_handoffs
 
     init_db()
     rows = pending_handoffs()
     if not rows:
-        print("No conversations waiting on a human.")
+        print("No leads waiting on the team.")
         return 0
 
-    print(f"{len(rows)} conversation(s) awaiting a human:")
+    # Always shown, as "unknown" when missing; everything else only if given.
+    core = [
+        ("name given", "contact_name"),
+        ("property address", "address"),
+        ("city", "city"),
+        ("ZIP", "zip_code"),
+        ("contact preference", "contact_preference"),
+        ("phone", "phone_number"),
+        ("timeline", "timeline"),
+    ]
+    extra = [
+        ("county (ZIP reference, not verified)", "county"),
+        ("condition", "condition"),
+        ("reason", "reason_for_selling"),
+        ("main concern", "main_concern"),
+        ("asking price", "asking_price"),
+        ("email", "email"),
+        ("best time to reach", "best_time_to_call"),
+        ("walkthrough availability", "availability"),
+        ("LLC / company", "company_name"),
+        ("square footage", "square_footage"),
+        ("septic or sewer", "sewer_type"),
+        ("summary", "lead_summary"),
+    ]
+
+    print(f"{len(rows)} lead(s) for the team:")
     print()
     for row in rows:
         window = "window OPEN" if row["window_open"] else "window CLOSED - they must message again"
-        print(f"  {row['name']:<24} {row['intent']:<8} {row['last_message_at']:%Y-%m-%d %H:%M}  {window}")
-        for label, key in [
-            ("address", "address"),
-            ("condition", "condition"),
-            ("timeline", "timeline"),
-            ("reason", "reason_for_selling"),
-            ("phone", "phone_number"),
-            ("best time to call", "best_time_to_call"),
-        ]:
+        print(
+            f"  {row['name']:<24} {row['intent']:<8} {row['status']:<15} "
+            f"{row['last_message_at']:%Y-%m-%d %H:%M}  {window}"
+        )
+        print(f"    conversation id (PSID): {row['psid']}")
+        for label, key in core:
+            print(f"    {label}: {row.get(key) or 'unknown'}")
+        for label, key in extra:
             if row.get(key):
                 print(f"    {label}: {row[key]}")
     return 0

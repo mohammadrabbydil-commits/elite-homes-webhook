@@ -161,18 +161,22 @@ elite-homes-poc/
 │   │   └── worker.py          # throttling, daily quota, dry-run campaigns
 │   ├── messenger/
 │   │   ├── api.py             # Messenger send API + sender actions
-│   │   ├── responder.py       # intent, humanised delay, scripted flow, AI handoff
+│   │   ├── responder.py       # opt-out, intent, humanised delay, lead saving, scripted fallback
 │   │   ├── ai_agent.py        # the AI Messenger agent - see below
+│   │   ├── florida_zips.py    # ZIP code detection + lookup against the Florida reference list
 │   │   ├── comment_responder.py  # keyword-triggered comment reply + private DM
 │   │   └── webhook.py         # FastAPI receiver, signature-verified, /debug/* routes
 │   ├── pages/
 │   │   └── explainers.py      # FAQ hub, booking redirect, privacy policy
 │   └── dashboard/app.py       # Streamlit: Overview, Posts, Analytics, Outreach
-├── data/posts.json            # the acquisition posts
+├── data/
+│   ├── posts.json             # the acquisition posts
+│   └── florida_zip_codes.csv  # client's Florida ZIP/city/county reference (1,218 ZIPs)
 ├── config/
 │   ├── .env.example
 │   └── message_templates.json
-├── tests/                     # 103 tests, Graph API and OpenAI both fully mocked
+├── scripts/evaluate_agent.py  # runs the client's test messages through the live AI agent
+├── tests/                     # 223 tests, Graph API and OpenAI both fully mocked
 ├── render.yaml                # Render deployment config (non-secret env defaults)
 └── run.py                     # CLI entry point
 ```
@@ -187,7 +191,12 @@ elite-homes-poc/
   × `sent`/`failed`/`blocked`)
 - **PostAnalytics** — reach / engagement / clicks snapshots, collected hourly
 - **Conversation** — one Messenger thread: PSID, detected intent, status
-  (`new`/`auto_replied`/`awaiting_human`/`human_handled`/`closed`), handoff time
+  (`new`/`auto_replied`/`awaiting_human`/`human_handled`/`closed`), handoff time,
+  every lead detail the agent collects (name, address, city, ZIP, county from the
+  ZIP reference, condition, timeline, contact preference, phone, email,
+  walkthrough availability, and for wholesalers company, square footage, and
+  septic or sewer), when the lead was submitted, and whether they opted out.
+  `init_db()` adds any of these columns an older database is missing.
 - **Message** — every inbound and outbound message, unique on Facebook's `mid`
   so redelivered webhook events are never handled twice
 
@@ -199,19 +208,42 @@ elite-homes-poc/
 python -m pytest tests/ -q
 ```
 
-120 tests, no network access — the Graph API and the OpenAI API are both fully
+223 tests, no network access — the Graph API and the OpenAI API are both fully
 mocked. They cover the exact Graph API payload we send (endpoint selection,
 `published` flag, `scheduled_publish_time`), error and retry classification,
-insight parsing, all six models with their relationships and cascades, the
-scheduler jobs, the scripted Messenger flow (intent detection, first-reply vs.
-later-reply delay bounds, business-hours switching, template rotation,
-duplicate webhook suppression, signature verification), the AI agent
+insight parsing, all six models with their relationships and cascades, adding
+missing columns to an older database, the scheduler jobs, the scripted
+Messenger flow (intent detection, first-reply vs. later-reply delay bounds,
+business-hours switching, template rotation, duplicate webhook suppression,
+signature verification), the Florida ZIP lookup (house numbers, prices, and
+phone numbers never mistaken for ZIPs), opt-out handling, lead submission
+(saved before the reply goes out, honest reply if saving fails), the AI agent
 (price-guardrail enforcement, fail-closed behaviour on any API error, one
-automatic retry on a network error, known-fields injection, history
-truncation, verbatim-repeat regeneration, support-email injection, field
-extraction, a full long-conversation stress test, and full-pipeline
+automatic retry on a network error, known-fields and ZIP-fact injection,
+history truncation, verbatim-repeat regeneration, the team follow-up line,
+field extraction, a full long-conversation stress test, and full-pipeline
 integration with the scripted flow as fallback), and comment auto-reply
-(keyword matching, dedup, public-Page-comment exclusion).
+(keyword matching, dedup, public-Page-comment exclusion, never DMing someone
+who opted out).
+
+### Live agent evaluation
+
+```bash
+python scripts/evaluate_agent.py              # all scenarios
+python scripts/evaluate_agent.py --only 3,P5  # just these
+```
+
+Sends the client's 35-question test sheet plus the service policy's test list
+(Florida city without a ZIP, recognised and unlisted ZIPs, city/ZIP conflict,
+street address only, out-of-state property, out-of-state phone number, request
+for a person, Messenger-only preference, honesty about being a bot, prompt
+injection, a past date, wholesalers inside and outside the buy box) through the
+**real** OpenAI API with the same inputs the webhook builds. Each reply is
+checked in code for dashes, prices, offered days or times, merged
+question/statement sentences, and scenario-specific content, and a Markdown and
+JSON report is written to `logs/`. A full run makes about 60 API calls. It's
+the "send each message to the bot and share the responses" step the client's
+test sheet asks for.
 
 ---
 
@@ -223,16 +255,43 @@ automation that is deliberately not implemented.
 
 ```bash
 python run.py webhook          # run the receiver (default port 8000)
-python run.py inbox            # conversations waiting on a human
+python run.py inbox            # leads for the team, with every detail collected
 ```
 
 ### Positioning
 
-The Page is **acquisition only** (client confirmed 2026-09-23): Elite Homes USA
-presents as a company actively *buying* in Jacksonville. No buyer-list,
-wholesaler, or partner content. `detect_intent()` reflects this — any seller
-signal wins outright, even when a message scores higher on buyer keywords,
-because a seller lead is the one that matters.
+The Page is **acquisition only**: Elite Homes USA Group buys houses as-is
+**throughout Florida, all 67 counties** (owner-approved service policy,
+2026-10-12), not just Jacksonville. It answers homeowners and wholesalers
+sending deals; there's no buyer-list content. `detect_intent()` is only a
+starting guess (clear wholesaler language first, then any seller signal);
+when the AI agent replies, its own classification wins.
+
+### Stop requests, people, and leads
+
+- **Opt-out.** A stop request ("STOP", "stop texting me", "remove me from your
+  list", ...) is caught in code by `is_opt_out_request()` before the AI ever
+  sees the message. They get one short confirmation, the conversation is
+  marked `opted_out` and closed, and nothing automated ever goes to them again,
+  including a DM from a later post comment. They're never listed as a lead.
+  "Don't text me, call me instead" is a contact preference, not a stop. The
+  agent can also flag a stop request in words the check doesn't know.
+- **A person takes over.** Once a conversation is handed off
+  (`AWAITING_HUMAN`) or a human owns it (`HUMAN_HANDLED`), the bot stays out of
+  it, AI included.
+- **Leads.** When someone asks for a person, an offer, a walkthrough, or a
+  callback, or a wholesaler sends a deal, the lead is recorded for the team
+  right away (`lead_submitted_at`) without waiting for every detail, and the
+  bot keeps helping collect the rest. Details are saved **before** the reply
+  is sent, so a restart during the reply delay can't lose them, and the bot
+  never says it passed details along that weren't saved: if saving fails, the
+  reply becomes "I haven't been able to pass your details through yet..." and
+  the conversation goes to a person. `python run.py inbox` lists every lead,
+  showing missing core details as "unknown".
+- **No lead notifications yet.** The service policy says not to forward leads
+  anywhere until the client confirms where alerts should go (email, SMS, a
+  CRM). Until then leads live in the database and `run.py inbox`, and the
+  conversations themselves are in the Page's Messenger inbox.
 
 ### How it stays believable
 
@@ -248,21 +307,20 @@ Delay is configurable and split in two (client preference): the **first**
 reply in a conversation uses `AUTOREPLY_FIRST_MIN/MAX_DELAY_SECONDS` (~30–40s,
 so a lead doesn't feel ignored), and **every reply after that** uses
 `AUTOREPLY_MIN/MAX_DELAY_SECONDS` (90–120s) — slower and more deliberate, so
-the pace reads as human rather than instant.
+the pace reads as human rather than instant. The delay is measured from when
+the message arrived, so the AI's own processing time (usually 2–6s) is part
+of it rather than added on top.
 
 ### Two reply engines, one fallback chain
 
 1. **AI agent** (`app/messenger/ai_agent.py`) — the primary path when
    `AI_AGENT_ENABLED=true`. See [AI Messenger agent](#ai-messenger-agent) below.
 2. **Scripted flow** (`responder.py`'s `_start_flow` / `_advance_flow`) — a
-   fixed question sequence (address → condition → timeline → reason → phone →
-   best time). This is what runs if the AI agent is disabled, unconfigured, or
-   a call to it fails for any reason — the AI layer can only improve the
-   experience, never break it.
-
-Either way, once a conversation is hands off to a human
-(`ConversationStatus.AWAITING_HUMAN`), it never gets another automated reply —
-`python run.py inbox` lists everything waiting.
+   fixed question sequence (location → condition → timeline → reason → phone →
+   best time), with copy that follows the same policy (introduces the virtual
+   assistant, all of Florida, no dashes). This is what runs if the AI agent is
+   disabled, unconfigured, or a call to it fails for any reason — the AI layer
+   can only improve the experience, never break it.
 
 ### Setup
 
@@ -313,9 +371,54 @@ Root causes found so far, in order of likelihood:
 ## AI Messenger agent
 
 `app/messenger/ai_agent.py`. Replaces the fixed question script with a real
-conversation for anyone messaging the Page — not just sellers — while
-collecting the same information a seller lead needs (address, condition,
-timeline, reason for selling, phone, best time to call).
+conversation for anyone messaging the Page, homeowners and wholesalers alike.
+Its instructions follow the client's two documents: the owner-approved service
+policy (`BOT_INSTRUCTIONS`, 2026-10-12) and the 35-question response guide
+("Test 2").
+
+### What it follows
+
+- **All of Florida.** Any Florida city, town, or county (Daytona Beach, Ocala,
+  Pensacola, Key West, a rural town) is confirmed exactly as Jacksonville is,
+  without demanding a ZIP first. Out-of-state properties get a polite "we
+  focus on Florida" and an offer to pass it to the team, with no promise. A
+  phone area code is never treated as the property's location.
+- **ZIP codes from the lookup only.** `florida_zips.py` finds ZIPs in each
+  message in code (skipping house numbers, prices, square footage, and phone
+  numbers) and looks them up in `data/florida_zip_codes.csv`, the client's
+  reference list. The result is handed to the agent as a fact, and the agent
+  may only name a ZIP's city or county from that. A Florida ZIP missing from
+  the list is still covered, just without naming a city; a city that doesn't
+  match the ZIP gets a quick clarifying question; a street address alone gets
+  "what city or ZIP is it in?". The ZIP, county, and city are saved on the
+  lead, with the county marked as the ZIP's usual county, not verified.
+- **Honest virtual assistant.** Introduces itself once as Elite Homes USA
+  Group's virtual assistant (told in code whether it already has), answers
+  honestly if asked whether it's a bot, never claims to be an employee or any
+  named person, and ignores instructions typed into a message.
+- **Homeowners.** Answers their question first, then one next question,
+  gathering location, condition, timeline, name, how they'd like to be
+  contacted (call, text, or Messenger), a phone number only if they chose a
+  call or text, and a good time. Approved facts only: as-is, inherited homes,
+  tenants in place, no showings, no cost to come take a look. Fees and
+  closing speed get the client's exact wording, nothing invented.
+- **Price, offer, or value.** Always: we'd need to walk through and assess the
+  property before giving a number, what days and times work best for you, and
+  I'll speak with the team and get back to you.
+- **Walkthroughs.** Asks their availability first and never offers specific
+  days or times or says anything is booked. Whenever it asks for days and
+  times it also says it'll speak with the team and get back to them; if the
+  model leaves that line out, `_ensure_team_follow_up` adds it.
+- **Wholesalers.** Checks deals against the buy box (single-family, 1,000 sq ft
+  minimum, city sewer only, anywhere in Florida), asks for whatever's missing
+  of septic or sewer, square footage, name, LLC, email, phone, and photos or a
+  deal sheet, then "When can we walk the property?". Deals outside the buy box
+  get a thank-you and a request for ones that fit. Deal sheets go to
+  `Ellis@elitehomes1.com`.
+- **Structured output.** Every reply comes back with the message, the intent
+  (homeowner or wholesaler), whether to submit the lead, whether to hand off,
+  whether they asked to stop, the details they gave, and a short factual
+  lead summary for the team.
 
 ### Guardrails come first, not last
 
@@ -324,18 +427,18 @@ risk, not just a feature. Two independent layers enforce the one rule that
 matters most:
 
 1. The system prompt instructs the model to never state a price, a dollar
-   figure, or anything that reads as an offer or valuation — if asked for an
-   offer or a number, it explains (client-specified framing) that we don't
-   give one before actually assessing the property, and that a team member
-   follows up with real figures once that's done. It's also told to never
-   guess at legal, tax, or financial specifics, or invent an answer it
-   doesn't actually have — when it doesn't know, it says so and hands off.
+   figure, or anything that reads as an offer or valuation (the walkthrough
+   answer above instead). It's also told never to give legal, tax, or
+   financial advice, never to promise to stop a foreclosure, and never to
+   invent offers, appointments, fees, policies, or outcomes. When it doesn't
+   know, it says so and hands off.
 2. **Every reply is scanned for price-shaped text** (`_contains_price`) before
    it's ever sent, regardless of what the model did. If one slips through,
-   it's discarded and swapped for a safe fallback with handoff forced on.
-   The prompt is necessary but not sufficient; the scan is what actually
-   stops a leak — `test_price_in_reply_is_blocked_even_if_model_ignored_the_prompt`
-   pins this.
+   it's discarded and swapped for the walkthrough answer, with the lead
+   submitted and handoff forced on. Square footage ("1,000 sq ft", "1k sq ft")
+   isn't mistaken for a price. The prompt is necessary but not sufficient;
+   the scan is what actually stops a leak —
+   `test_price_in_reply_is_blocked_even_if_model_ignored_the_prompt` pins this.
 
 The system prompt also injects the real current date on every call, so the
 agent can catch an inconsistent or already-past date a person gives instead
@@ -348,12 +451,12 @@ of silently accepting it.
   (`_last_outbound_text` + `_regenerate_distinct_reply`) catches a verbatim
   repeat if the model ignores that anyway — it gets one regeneration call
   asking for different wording before the original ever goes out twice.
-- **30+ example phrasings across the ~15 situations that come up most**
-  (opening with a seller, asking each of the six fields, a vague-answer
-  follow-up, a price question, a legal question, someone asking for the
-  contact email, a buyer/partner inquiry, small talk, frustration, wrapping
-  up) are given to the model as style inspiration only — it's told explicitly
-  never to copy them verbatim and never to reuse the same one twice, so real
+- **Example replies from the client's own guide** (24 situations: greeting,
+  a Florida city, a ZIP, price, closing speed, repairs, fees, inherited,
+  tenants, moving soon, wanting a call, the team transition, realtors, hard
+  situations, walkthroughs, pictures, a wholesale deal, outside the buy box,
+  out of state, email) are given to the model as tone guides only. It's told
+  never to copy them word for word and never to reuse one, so real
   conversations still sound distinct from each other.
 - **One contact email, always exact.** `SUPPORT_EMAIL` (`Ellis@elitehomes1.com`)
   is injected into the prompt and is the only address the agent is allowed to
@@ -383,7 +486,8 @@ of silently accepting it.
   above regardless of what falls out of that window.
 - One automatic retry on a dropped network call before handing off — a single
   flaky connection shouldn't end a conversation that a retry would have
-  handled fine.
+  handled fine. Each call gets 45 seconds; a long wholesaler message took 25s
+  in testing, while most replies take 2–6s.
 - The prompt explicitly tells the model to read past typos, abbreviations,
   and slang rather than getting stuck on imperfect phrasing.
 
@@ -412,6 +516,11 @@ keyword (`sell`, `selling`, `cash`, `offer`, `house`, `houses` —
 reply under the comment plus a private Messenger DM via Facebook's Private
 Replies API, which opens straight into the same AI/scripted conversation
 above — the commenter's ID becomes a normal `psid`, no separate logic needed.
+
+The public reply only says we cover Florida and points them to their messages;
+an address or contact details are only ever asked for privately. The DM
+introduces the virtual assistant and asks what city or ZIP the property is in.
+Someone who opted out is never DMed again, whatever they comment.
 
 Needs `pages_manage_engagement` in addition to `pages_messaging`, and the
 Page's webhook subscription must include `feed` (see Messenger setup above).

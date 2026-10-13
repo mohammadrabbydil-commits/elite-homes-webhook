@@ -2,16 +2,15 @@
 
 When someone comments one of the trigger keywords on a Page post, this posts
 a public reply under their comment and sends them a private-reply DM to open
-a Messenger thread. That DM uses the same opening question as the seller
-question-intake flow (see `app.messenger.responder`), and marks the resulting
-Conversation at the same stage the flow would - so if the person replies in
-Messenger, it continues straight into the existing question flow rather than
-needing separate logic.
+a Messenger thread. The public reply never asks for an address or contact
+details - those are only ever asked for privately. The DM introduces the
+virtual assistant and asks where the property is, and the resulting
+Conversation is marked as already replied to - so if the person answers in
+Messenger, the agent picks it up from there rather than needing separate
+logic. Someone who asked us to stop is never DMed again.
 
 Requires `pages_manage_engagement` (comment replies) in addition to
-`pages_messaging` (private replies) - neither is granted yet, so this is
-built and tested ahead of that, the same way the Messenger flow was built
-ahead of `pages_messaging` approval.
+`pages_messaging` (private replies).
 """
 
 from __future__ import annotations
@@ -92,6 +91,9 @@ def handle_inbound_comment(
             )
             session.add(conversation)
             session.flush()
+        elif conversation.opted_out:
+            # They asked us to stop - a comment is never a reason to DM them again.
+            return {"handled": False, "reason": "contact opted out"}
         elif conversation.status in {ConversationStatus.HUMAN_HANDLED, ConversationStatus.CLOSED}:
             # Already a human's conversation - a comment keyword hit shouldn't
             # reopen it with an automated reply.

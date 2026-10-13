@@ -2,18 +2,22 @@
 
 Design goals, in priority order:
 
-1. **Never sound like a bot.** The first reply lands quickly enough that the
+1. **Respect the person.** Anyone who asks us to stop is suppressed for good -
+   no more automated replies, and they never show up as a lead to follow up.
+   Once a person owns a conversation, the bot stays out of it.
+2. **Never sound like a bot.** The first reply lands quickly enough that the
    lead doesn't feel ignored (~30-40s), but every reply after that is
    deliberately slower (90-120s, client preference) - a real person doesn't
-   answer every message within seconds. `mark_seen` is timed to land just
-   before the reply, not the instant the message arrives, so there's no long
-   "Seen" silence to give it away either.
-2. **Capture a seller lead completely, then hand off.** A SELL-intent
-   conversation runs a short question flow (address, condition, timeline,
-   reason, phone, best time to call) and never makes an offer or states a
-   price - it only gathers information for the team to call back on. Every
-   other intent still gets exactly one acknowledgement, then a human owns the
-   thread, so it can never get lost in a long automated back-and-forth.
+   answer every message within seconds. The delay is measured from when the
+   message arrived, so the AI's own thinking time is part of it, not added
+   on top. `mark_seen` is timed to land just before the reply, not the
+   instant the message arrives, so there's no long "Seen" silence either.
+3. **Get interested leads to the team.** The AI agent (primary) follows the
+   client's service policy. When someone asks for a person, an offer, a
+   walkthrough, or sends a deal, the lead is recorded for the team right
+   away - before the reply goes out, so the bot never says it passed details
+   along that weren't actually saved. The scripted question flow is the
+   fallback whenever the AI agent is unavailable.
 """
 
 from __future__ import annotations
@@ -27,7 +31,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from app.config import TEMPLATES_FILE, settings
 from app.database.db import session_scope
@@ -43,6 +47,7 @@ from app.database.models import (
 from app.messenger import ai_agent
 from app.messenger.ai_agent import EXTRACTABLE_FIELDS
 from app.messenger.api import get_user_profile, send_sender_action, send_text
+from app.messenger.florida_zips import describe_mention, find_zip_mentions
 
 logger = logging.getLogger(__name__)
 
@@ -51,10 +56,45 @@ INTENT_KEYWORDS: dict[Intent, tuple[str, ...]] = {
     Intent.SELL: (
         "sell", "selling", "sold", "my house", "my property", "inherited",
         "vacant", "landlord", "tenant", "as-is", "as is", "offer on my",
+        "do you buy", "buy my", "buy houses", "buying houses", "still buying",
     ),
     Intent.BUY: ("buy", "buying", "buyer", "investor", "rental", "deal flow"),
-    Intent.PARTNER: ("partner", "wholesale", "wholesaler", "under contract", "jv", "agent"),
+    Intent.PARTNER: ("partner", "wholesale", "wholesaler", "under contract", "jv", "agent", "deal"),
 }
+
+# Unmistakably someone sending us a deal - outranks seller words like
+# "are you buying", which a wholesaler also says.
+_STRONG_PARTNER_KEYWORDS = (
+    "wholesale", "wholesaler", "under contract", "assignment", "assigned contract",
+    "arv", "deal sheet", "deal sheets", "buy box", "proof of funds",
+    "off-market", "off market", "dispo",
+)
+
+# A message that is only one of these is a stop request.
+_OPT_OUT_EXACT = {
+    "stop", "stop all", "unsubscribe", "opt out", "optout", "opt-out",
+    "remove me", "stop messaging", "stop texting", "stop contacting me",
+}
+# Stop requests inside a longer message. "Don't text me, call me instead" is
+# a contact preference, not a stop request, so the don't/do-not form only
+# counts when nothing follows it.
+_OPT_OUT_PATTERN = re.compile(
+    r"\b(?:stop|quit)\s+(?:texting|messaging|contacting|sending|emailing|calling)\b"
+    r"|\b(?:don'?t|do not|never)\s+(?:text|message|contact|email)\s+me"
+    r"(?:\s+(?:again|anymore|any more|ever))?\s*(?:[.!]|$)"
+    r"|\bremove me from\b|\btake me off\b|\bunsubscribe\b|\bopt[\s-]?out\b"
+    r"|\bleave me alone\b|\bno more messages\b",
+    re.IGNORECASE,
+)
+
+OPT_OUT_REPLY = "Understood. We won't reach out again. Take care!"
+
+# Sent instead of the planned reply if the lead couldn't be saved - the
+# planned reply may say the details were passed along, which would be false.
+LEAD_NOT_SAVED_REPLY = (
+    "I haven't been able to pass your details through yet, but our team can "
+    "still see this conversation."
+)
 
 # The seller question-intake flow, in order. Each stage names the question
 # still outstanding; the next inbound message answers it and saves into the
@@ -76,13 +116,15 @@ _STAGE_FIELD: dict[FlowStage, str] = {
     FlowStage.AWAITING_BEST_TIME: "best_time_to_call",
 }
 
+_KNOWN_FIELD_NAMES = tuple(f for f in EXTRACTABLE_FIELDS if f != "lead_summary") + ("county",)
+
 
 def _known_fields(conversation: Conversation) -> dict[str, str]:
     """Already-captured columns on this conversation, so the AI agent is told
     these as facts instead of having to re-infer them from raw history."""
     return {
         field: value
-        for field in EXTRACTABLE_FIELDS
+        for field in _KNOWN_FIELD_NAMES
         if (value := getattr(conversation, field, None))
     }
 
@@ -108,6 +150,10 @@ class ReplyPlan:
     new_stage: FlowStage | None = None
     # {column_name: value} to save onto the Conversation row, if any.
     captured: dict[str, str] | None = None
+    # Record this conversation as a lead for the team (the bot may keep replying).
+    submit_lead: bool = False
+    # They asked us to stop - suppress the contact for good.
+    opt_out: bool = False
 
 
 def _load_auto_reply_config() -> dict:
@@ -124,30 +170,51 @@ def _load_seller_flow_config() -> dict:
     return payload.get("seller_flow", {})
 
 
+def _has_keyword(lowered: str, keyword: str) -> bool:
+    return bool(re.search(rf"\b{re.escape(keyword)}\b", lowered))
+
+
 def detect_intent(text: str) -> Intent:
     """Classify an inbound message by keyword.
 
-    Checks SELL last-but-weighted: the Page is acquisition-focused, so a
-    message mentioning both selling and investing is treated as a seller lead.
+    Only a starting guess: when the AI agent replies it classifies the
+    message itself, and that takes precedence. Clear wholesaler language
+    wins first; after that the Page is acquisition-focused, so any seller
+    signal wins over buyer or partner words.
     """
     if not text:
         return Intent.UNKNOWN
 
     lowered = text.lower()
+    if any(_has_keyword(lowered, kw) for kw in _STRONG_PARTNER_KEYWORDS):
+        return Intent.PARTNER
+
     scores: dict[Intent, int] = {}
     for intent, keywords in INTENT_KEYWORDS.items():
-        hits = sum(1 for kw in keywords if re.search(rf"\b{re.escape(kw)}\b", lowered))
+        hits = sum(1 for kw in keywords if _has_keyword(lowered, kw))
         if hits:
             scores[intent] = hits
 
     if not scores:
         return Intent.UNKNOWN
-    # The Page is acquisition-only, so any seller signal wins outright. A
-    # message like "selling my rental, I'm an investor" scores higher on buyer
-    # keywords but is plainly a seller lead, and those are the ones that matter.
+    # A message like "selling my rental, I'm an investor" scores higher on
+    # buyer keywords but is plainly a seller lead, and those are the ones
+    # that matter.
     if Intent.SELL in scores:
         return Intent.SELL
     return max(scores, key=lambda k: scores[k])
+
+
+def is_opt_out_request(text: str) -> bool:
+    """Whether a message asks us to stop contacting them.
+
+    Checked in code before the AI agent ever sees the message, so honouring
+    a stop request never depends on the model getting it right.
+    """
+    if not text:
+        return False
+    normalized = re.sub(r"[^\w\s'-]", "", text).strip().lower()
+    return normalized in _OPT_OUT_EXACT or bool(_OPT_OUT_PATTERN.search(text))
 
 
 def is_business_hours(now: datetime | None = None) -> bool:
@@ -225,13 +292,68 @@ def _start_flow(first_name: str | None) -> ReplyPlan:
     )
 
 
+def _intent_from_agent(value: str | None, fallback: Intent) -> Intent:
+    if value in {"sell", "partner", "buy"}:
+        return Intent(value)
+    return fallback
+
+
+def _ai_plan(
+    text: str,
+    conversation: Conversation,
+    history: list[Message] | None,
+    fallback_intent: Intent,
+    *,
+    is_first_reply: bool,
+    stage: FlowStage,
+) -> ReplyPlan | None:
+    """One AI agent turn as a ReplyPlan, or None if the agent is unavailable
+    and the caller should fall back to the scripted path.
+
+    ZIP codes in the message are looked up here, in code, and handed to the
+    agent as facts - it never names a ZIP's city or county on its own.
+    """
+    mentions = find_zip_mentions(text)
+    result = ai_agent.generate_reply(
+        history or [],
+        text,
+        known_fields=_known_fields(conversation),
+        location_facts=[describe_mention(m) for m in mentions] or None,
+    )
+    if not result.success:
+        logger.warning("AI agent unavailable (%s), falling back to the scripted flow", result.error)
+        return None
+
+    captured = dict(result.extracted)
+    if mentions:
+        # The ZIP they typed is authoritative over anything the model extracted.
+        first = mentions[0]
+        captured["zip_code"] = first.zip_code
+        if first.info:
+            captured["county"] = first.info.county
+            if not captured.get("city") and not conversation.city:
+                captured["city"] = first.info.city
+
+    return ReplyPlan(
+        should_reply=True,
+        text=result.text,
+        delay_seconds=compute_delay(is_first_reply=is_first_reply),
+        intent=_intent_from_agent(result.intent, fallback_intent),
+        handoff=result.handoff,
+        submit_lead=result.submit_lead or result.handoff,
+        opt_out=result.opt_out,
+        new_stage=FlowStage.COMPLETE if result.handoff else stage,
+        captured=captured or None,
+    )
+
+
 def _advance_flow(
     text: str,
     conversation: Conversation,
     quick_reply_payload: str | None,
     history: list[Message] | None = None,
 ) -> ReplyPlan:
-    """Continue an in-progress seller question flow by one step."""
+    """Continue an in-progress conversation by one step."""
     flow_cfg = _load_seller_flow_config()
     stage = conversation.stage
 
@@ -251,28 +373,16 @@ def _advance_flow(
             new_stage=stage,
         )
 
-    # AI agent path: free-text replies go to the model instead of the rigid
-    # one-question-at-a-time script, when enabled and configured. Any
-    # failure here (disabled, missing key, network error, malformed
-    # response) falls straight through to the rigid flow below - the AI
-    # layer can only add a better experience, never remove the working one.
+    # AI agent path. Any failure here (disabled, missing key, network error,
+    # malformed response) falls straight through to the scripted flow below -
+    # the AI layer can only add a better experience, never remove the
+    # working one.
     if settings.ai_agent_enabled and settings.openai_api_key:
-        agent_result = ai_agent.generate_reply(
-            history or [], text, known_fields=_known_fields(conversation)
+        plan = _ai_plan(
+            text, conversation, history, conversation.intent, is_first_reply=False, stage=stage
         )
-        if agent_result.success:
-            return ReplyPlan(
-                should_reply=True,
-                text=agent_result.text,
-                delay_seconds=compute_delay(),
-                intent=conversation.intent,
-                handoff=agent_result.handoff,
-                new_stage=FlowStage.COMPLETE if agent_result.handoff else stage,
-                captured=agent_result.extracted or None,
-            )
-        logger.warning(
-            "AI agent unavailable (%s), falling back to the scripted flow", agent_result.error
-        )
+        if plan is not None:
+            return plan
 
     field = _STAGE_FIELD[stage]
     captured = {field: text.strip()[:500]}
@@ -285,6 +395,7 @@ def _advance_flow(
             delay_seconds=compute_delay(),
             intent=conversation.intent,
             handoff=True,
+            submit_lead=True,
             new_stage=FlowStage.COMPLETE,
             captured=captured,
         )
@@ -310,18 +421,37 @@ def plan_reply(
 ) -> ReplyPlan:
     """Decide whether and how to auto-reply to one inbound message.
 
-    A SELL-intent lead runs the multi-step question flow until it completes.
-    Every other intent gets exactly one acknowledgement; after that, or once
-    the flow completes, a human owns the thread and later messages never get
-    another automated reply.
+    The AI agent drives the conversation, falling back to the scripted
+    question flow when it's unavailable. Once a conversation is handed off, a
+    human owns the thread and later messages never get another automated
+    reply. Someone who asked us to stop never gets another reply at all.
     """
+    if conversation.opted_out:
+        return ReplyPlan(False, intent=conversation.intent or Intent.UNKNOWN, reason="contact opted out")
+
+    if is_opt_out_request(text):
+        # One short confirmation, but only while the bot owns the conversation.
+        can_confirm = settings.autoreply_enabled and conversation.status in {
+            ConversationStatus.NEW,
+            ConversationStatus.AUTO_REPLIED,
+        }
+        return ReplyPlan(
+            should_reply=can_confirm,
+            text=OPT_OUT_REPLY if can_confirm else None,
+            delay_seconds=compute_delay(is_first_reply=True) if can_confirm else 0.0,
+            intent=conversation.intent or Intent.UNKNOWN,
+            handoff=False,
+            opt_out=True,
+            reason="asked us to stop",
+        )
+
     if not settings.autoreply_enabled:
         return ReplyPlan(False, intent=detect_intent(text), reason="auto-reply disabled in config")
 
     if conversation.status in {ConversationStatus.HUMAN_HANDLED, ConversationStatus.CLOSED}:
         return ReplyPlan(False, intent=conversation.intent, reason=f"status is {conversation.status.value}")
 
-    # Mid-flow: this message answers (or asks about) the outstanding question.
+    # Mid-conversation: this message answers (or asks about) the last question.
     if conversation.status is ConversationStatus.AUTO_REPLIED and conversation.stage is not FlowStage.COMPLETE:
         return _advance_flow(text, conversation, quick_reply_payload, history)
 
@@ -335,27 +465,13 @@ def plan_reply(
     # Fresh conversation (or one that has never triggered an auto-reply yet).
     intent = detect_intent(text)
 
-    # AI agent handles the very first reply too, for every intent - not just
-    # SELL leads continuing a flow. Same fallback discipline as mid-flow: any
-    # failure here falls straight through to the scripted paths below.
     if settings.ai_agent_enabled and settings.openai_api_key:
-        agent_result = ai_agent.generate_reply(
-            history or [], text, known_fields=_known_fields(conversation)
+        plan = _ai_plan(
+            text, conversation, history, intent,
+            is_first_reply=True, stage=FlowStage.AWAITING_ADDRESS,
         )
-        if agent_result.success:
-            return ReplyPlan(
-                should_reply=True,
-                text=agent_result.text,
-                delay_seconds=compute_delay(is_first_reply=True),
-                intent=intent,
-                handoff=agent_result.handoff,
-                new_stage=FlowStage.COMPLETE if agent_result.handoff else FlowStage.AWAITING_ADDRESS,
-                captured=agent_result.extracted or None,
-            )
-        logger.warning(
-            "AI agent unavailable for first reply (%s), falling back to the scripted path",
-            agent_result.error,
-        )
+        if plan is not None:
+            return plan
 
     if intent is Intent.SELL:
         return _start_flow(first_name)
@@ -379,6 +495,36 @@ def plan_reply(
     )
 
 
+def _save_lead_details(conversation_id: int, plan: ReplyPlan, psid: str) -> None:
+    """Save what this message told us, and record the lead for the team,
+    before the reply goes out.
+
+    Saving first means a deploy or restart during the reply delay can't lose
+    the answer, and the bot never says it passed details along that weren't
+    actually saved: if this fails, the reply is swapped for an honest one and
+    the conversation goes to a person.
+    """
+    lead = plan.submit_lead or plan.handoff
+    if not (plan.captured or lead):
+        return
+    try:
+        with session_scope() as session:
+            conversation = session.get(Conversation, conversation_id)
+            if conversation is None:
+                raise LookupError(f"conversation {conversation_id} not found")
+            for field, value in (plan.captured or {}).items():
+                setattr(conversation, field, value)
+            if lead and conversation.lead_submitted_at is None:
+                conversation.lead_submitted_at = utcnow()
+    except Exception:
+        logger.exception("Could not save lead details for %s", psid)
+        if lead:
+            plan.text = LEAD_NOT_SAVED_REPLY
+            plan.quick_replies = None
+            plan.handoff = True
+            plan.new_stage = FlowStage.COMPLETE
+
+
 def handle_inbound_message(
     psid: str,
     text: str,
@@ -392,6 +538,8 @@ def handle_inbound_message(
     response, and replying twice to the same message is exactly the kind of
     thing that reads as automated.
     """
+    received_at = time.monotonic()
+
     with session_scope() as session:
         if mid and session.scalar(select(Message).where(Message.mid == mid).limit(1)):
             logger.info("Message %s already handled, ignoring redelivery", mid)
@@ -443,6 +591,11 @@ def handle_inbound_message(
         if plan.intent is not Intent.UNKNOWN:
             conversation.intent = plan.intent
 
+        if plan.opt_out and not conversation.opted_out:
+            conversation.opted_out = True
+            conversation.status = ConversationStatus.CLOSED
+            logger.info("%s asked us to stop; contact suppressed", psid)
+
         if not plan.should_reply:
             logger.info("Not auto-replying to %s: %s", psid, plan.reason)
             # A follow-up message from someone a human already owns still needs
@@ -453,18 +606,20 @@ def handle_inbound_message(
 
         conversation_id = conversation.id
 
-    # Outside the transaction: the pause must not hold a database session open.
-    logger.info(
-        "Replying to %s in %.0fs (intent=%s)", psid, plan.delay_seconds, plan.intent.value
-    )
+    _save_lead_details(conversation_id, plan, psid)
+
+    # Outside any transaction: the pause must not hold a database session
+    # open. Time already spent (the AI call) counts toward the delay.
+    remaining = max(0.0, plan.delay_seconds - (time.monotonic() - received_at))
+    logger.info("Replying to %s in %.0fs (intent=%s)", psid, remaining, plan.intent.value)
     if sleep:
         # Wait first with no indicator at all - mark_seen only fires close to
         # when the reply actually goes out, not the instant the message
         # arrives. A real person doesn't necessarily open a message the
         # second it lands, so "Seen" immediately followed by a long silence
         # is its own tell.
-        typing_lead = min(plan.delay_seconds, 6.0)
-        time.sleep(max(0.0, plan.delay_seconds - typing_lead))
+        typing_lead = min(remaining, 6.0)
+        time.sleep(max(0.0, remaining - typing_lead))
         send_sender_action(psid, "mark_seen")
         send_sender_action(psid, "typing_on")
         time.sleep(typing_lead)
@@ -479,21 +634,16 @@ def handle_inbound_message(
         if conversation is None:
             return plan
 
-        # The person's answer was received regardless of whether our next
-        # question makes it out, so save it either way.
-        if plan.captured:
-            for field, value in plan.captured.items():
-                setattr(conversation, field, value)
-
         if result.success:
             # Stage only advances on a confirmed send - if it failed, a human
             # picks up from exactly where the automation left off.
             if plan.new_stage is not None:
                 conversation.stage = plan.new_stage
             conversation.auto_replies_sent += 1
-            conversation.status = (
-                ConversationStatus.AWAITING_HUMAN if plan.handoff else ConversationStatus.AUTO_REPLIED
-            )
+            if not plan.opt_out:
+                conversation.status = (
+                    ConversationStatus.AWAITING_HUMAN if plan.handoff else ConversationStatus.AUTO_REPLIED
+                )
             if plan.handoff:
                 conversation.handoff_at = utcnow()
             session.add(
@@ -509,31 +659,55 @@ def handle_inbound_message(
             if plan.handoff:
                 logger.info("Conversation %s handed off to a human", psid)
         else:
-            conversation.status = ConversationStatus.AWAITING_HUMAN
+            if not plan.opt_out:
+                conversation.status = ConversationStatus.AWAITING_HUMAN
             logger.error("Auto-reply failed for %s, flagged for human: %s", psid, result.error)
 
     return plan
 
 
 def pending_handoffs() -> list[dict]:
-    """Conversations waiting on a human, newest first. Feeds the dashboard."""
+    """Leads for the team, newest first: conversations the bot handed off,
+    plus any where a lead was submitted while the bot kept helping. Anyone
+    who asked us to stop is never listed - they must not be followed up."""
     with session_scope() as session:
         rows = session.scalars(
             select(Conversation)
-            .where(Conversation.status == ConversationStatus.AWAITING_HUMAN)
+            .where(
+                or_(
+                    Conversation.status == ConversationStatus.AWAITING_HUMAN,
+                    Conversation.lead_submitted_at.is_not(None),
+                ),
+                ~Conversation.opted_out,
+            )
             .order_by(Conversation.last_message_at.desc())
         ).all()
         return [
             {
                 "psid": c.psid,
                 "name": c.name or "(unknown)",
+                "contact_name": c.contact_name,
                 "intent": c.intent.value,
+                "status": c.status.value,
                 "address": c.property_address,
+                "city": c.city,
+                "zip_code": c.zip_code,
+                "county": c.county,
                 "condition": c.condition,
                 "timeline": c.timeline,
                 "reason_for_selling": c.reason_for_selling,
+                "main_concern": c.main_concern,
+                "asking_price": c.asking_price,
+                "contact_preference": c.contact_preference,
                 "phone_number": c.phone_number,
+                "email": c.email,
                 "best_time_to_call": c.best_time_to_call,
+                "availability": c.availability,
+                "company_name": c.company_name,
+                "square_footage": c.square_footage,
+                "sewer_type": c.sewer_type,
+                "lead_summary": c.lead_summary,
+                "lead_submitted_at": c.lead_submitted_at,
                 "last_message_at": c.last_message_at,
                 "window_open": c.window_open,
             }

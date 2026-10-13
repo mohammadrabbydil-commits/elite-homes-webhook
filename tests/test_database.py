@@ -168,3 +168,63 @@ def test_session_scope_rolls_back_on_error(db_session, monkeypatch):
 
     with db_module.session_scope() as session:
         assert session.scalars(select(ScheduledPost)).all() == []
+
+
+def test_init_db_adds_new_columns_to_an_older_database(tmp_path, monkeypatch):
+    """A database created before a column existed gets it added in place,
+    with existing rows kept - instead of every query failing with
+    "no such column"."""
+    from sqlalchemy import create_engine, text
+
+    from app.database import db as db_module
+    from app.database.models import Conversation, ConversationStatus, FlowStage
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'old.db'}", future=True)
+    with engine.begin() as conn:
+        # The conversations table as it looked before the lead and flow columns.
+        conn.execute(text(
+            "CREATE TABLE conversations ("
+            " id INTEGER PRIMARY KEY, psid VARCHAR(64) NOT NULL UNIQUE, name VARCHAR(255),"
+            " intent VARCHAR(20) NOT NULL, status VARCHAR(20) NOT NULL,"
+            " property_address VARCHAR(512), auto_replies_sent INTEGER NOT NULL,"
+            " first_message_at DATETIME NOT NULL, last_message_at DATETIME NOT NULL,"
+            " handoff_at DATETIME, created_at DATETIME NOT NULL)"
+        ))
+        conn.execute(text(
+            "INSERT INTO conversations (psid, intent, status, auto_replies_sent,"
+            " first_message_at, last_message_at, created_at)"
+            " VALUES ('old_psid', 'SELL', 'AWAITING_HUMAN', 1,"
+            " '2026-10-01 10:00:00', '2026-10-01 10:00:00', '2026-10-01 10:00:00')"
+        ))
+    monkeypatch.setattr(db_module, "engine", engine)
+
+    db_module.init_db()
+
+    columns = {col["name"] for col in inspect(engine).get_columns("conversations")}
+    for name in ("stage", "zip_code", "county", "contact_preference", "lead_submitted_at", "opted_out"):
+        assert name in columns
+
+    from sqlalchemy.orm import Session
+
+    with Session(engine) as session:
+        convo = session.scalar(select(Conversation).where(Conversation.psid == "old_psid"))
+        assert convo.status is ConversationStatus.AWAITING_HUMAN
+        assert convo.stage is FlowStage.AWAITING_ADDRESS
+        assert convo.opted_out is False
+        assert convo.zip_code is None
+    engine.dispose()
+
+
+def test_init_db_is_safe_to_run_twice(tmp_path, monkeypatch):
+    from sqlalchemy import create_engine
+
+    from app.database import db as db_module
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'twice.db'}", future=True)
+    monkeypatch.setattr(db_module, "engine", engine)
+
+    db_module.init_db()
+    db_module.init_db()
+
+    assert "opted_out" in {col["name"] for col in inspect(engine).get_columns("conversations")}
+    engine.dispose()

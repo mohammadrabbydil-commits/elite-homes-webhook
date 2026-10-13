@@ -254,6 +254,25 @@ class Conversation(Base):
     reason_for_selling: Mapped[str | None] = mapped_column(String(512), nullable=True)
     phone_number: Mapped[str | None] = mapped_column(String(64), nullable=True)
     best_time_to_call: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # Lead details the AI agent collects for the team handoff. Anything left
+    # NULL is "unknown" - a lead is passed along without waiting for all of it.
+    contact_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    city: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    zip_code: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    # From the ZIP reference list: the ZIP's usual county, not a verified one.
+    county: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    contact_preference: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    availability: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    asking_price: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    main_concern: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    company_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    square_footage: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    sewer_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    lead_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    lead_submitted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Asked us to stop. Never auto-reply or follow up again once set.
+    opted_out: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     auto_replies_sent: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     first_message_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
     last_message_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)

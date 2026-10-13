@@ -16,14 +16,20 @@ from app.database.models import (
     Intent,
     Message,
     MessageDirection,
+    utcnow,
 )
+from app.messenger.ai_agent import AgentReply
 from app.messenger.api import SendResult
 from app.messenger.responder import (
+    LEAD_NOT_SAVED_REPLY,
+    OPT_OUT_REPLY,
     _load_seller_flow_config,
     compute_delay,
     detect_intent,
     handle_inbound_message,
     is_business_hours,
+    is_opt_out_request,
+    pending_handoffs,
     plan_reply,
 )
 
@@ -280,7 +286,9 @@ def test_sell_message_starts_flow_with_greeting_and_faq_buttons(db_session, enab
     assert plan.should_reply is True
     assert plan.intent is Intent.SELL
     assert plan.quick_replies and len(plan.quick_replies) == 3
-    assert "address" in plan.text.lower()
+    # Introduces the virtual assistant, then asks where the property is.
+    assert "virtual assistant" in plan.text.lower()
+    assert any(w in plan.text.lower() for w in ("located", "city or zip", "where's the house"))
 
     convo = db_session.scalar(select(Conversation).where(Conversation.psid == "psid_1"))
     assert convo.status is ConversationStatus.AUTO_REPLIED  # not handed off yet
@@ -347,9 +355,10 @@ def test_faq_quick_reply_answers_without_advancing_the_flow(db_session, enabled)
         )
 
     assert faq_plan.should_reply is True
-    assert "fee" in faq_plan.text.lower()
+    # The client's approved fees answer - no invented "no fees" claim.
+    assert "no cost to have us come take a look" in faq_plan.text.lower()
     # the still-outstanding question is repeated - several phrasings are possible
-    assert any(w in faq_plan.text.lower() for w in ("address", "located"))
+    assert any(w in faq_plan.text.lower() for w in ("address", "located", "city or zip"))
 
     convo = db_session.scalar(select(Conversation).where(Conversation.psid == "psid_1"))
     assert convo.stage is FlowStage.AWAITING_ADDRESS  # unchanged - FAQ tap isn't an answer
@@ -629,3 +638,357 @@ def test_ai_agent_handles_a_long_conversation_without_re_asking_known_fields(db_
     assert convo.best_time_to_call == "mornings work best"
     assert convo.status is ConversationStatus.AWAITING_HUMAN
     assert convo.stage is FlowStage.COMPLETE
+
+
+# --- Client service policy: opt-out, Florida ZIPs, lead submission ----------
+
+
+def _patched_send(send_results):
+    """The usual Graph API patches, with send_text returning `send_results`."""
+    from contextlib import ExitStack
+
+    stack = ExitStack()
+    stack.enter_context(patch("app.messenger.responder.get_user_profile", return_value={}))
+    stack.enter_context(patch("app.messenger.responder.send_sender_action", return_value=True))
+    mock_send = stack.enter_context(patch("app.messenger.responder.send_text"))
+    mock_send.side_effect = send_results
+    return stack, mock_send
+
+
+def _convo(db_session, psid="psid_1") -> Conversation:
+    db_session.expire_all()
+    return db_session.scalar(select(Conversation).where(Conversation.psid == psid))
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "STOP", "stop", "Stop!", "unsubscribe", "opt out",
+        "Please stop texting me", "stop messaging me please", "don't contact me again",
+        "Do not text me.", "remove me from your list", "leave me alone",
+    ],
+)
+def test_stop_requests_are_recognised(text):
+    assert is_opt_out_request(text) is True
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Can you stop by this weekend?",
+        "Don't text me, call me instead",  # a contact preference, not a stop request
+        "I don't want to stop the sale",
+        "Do you buy houses?",
+        "",
+    ],
+)
+def test_ordinary_messages_are_not_stop_requests(text):
+    assert is_opt_out_request(text) is False
+
+
+def test_stop_request_is_confirmed_once_then_suppressed_for_good(db_session, enabled):
+    stack, mock_send = _patched_send(
+        [SendResult(success=True, message_id="m_1"), SendResult(success=True, message_id="m_2")]
+    )
+    with stack:
+        handle_inbound_message("psid_1", "SELL my house", mid="mid_1", sleep=False)
+        stop_plan = handle_inbound_message("psid_1", "STOP", mid="mid_2", sleep=False)
+        later = handle_inbound_message("psid_1", "hello again?", mid="mid_3", sleep=False)
+
+    assert stop_plan.should_reply is True
+    assert mock_send.call_args_list[1].args[1] == OPT_OUT_REPLY
+    assert later.should_reply is False
+    assert later.reason == "contact opted out"
+    assert mock_send.call_count == 2
+
+    convo = _convo(db_session)
+    assert convo.opted_out is True
+    assert convo.status is ConversationStatus.CLOSED
+
+
+def test_stop_request_never_reaches_the_ai_agent(db_session, monkeypatch):
+    _enable_ai_agent(monkeypatch)
+    stack, mock_send = _patched_send([SendResult(success=True, message_id="m_1")])
+    with stack, patch("app.messenger.ai_agent.generate_reply") as mock_agent:
+        handle_inbound_message("psid_1", "please stop messaging me", mid="mid_1", sleep=False)
+
+    mock_agent.assert_not_called()
+    assert mock_send.call_args.args[1] == OPT_OUT_REPLY
+
+
+def test_stop_request_is_recorded_without_a_reply_when_a_human_owns_the_thread(db_session, enabled):
+    db_session.add(Conversation(psid="psid_1", status=ConversationStatus.HUMAN_HANDLED))
+    db_session.commit()
+
+    stack, mock_send = _patched_send([])
+    with stack:
+        plan = handle_inbound_message("psid_1", "stop texting me", mid="mid_1", sleep=False)
+
+    assert plan.should_reply is False
+    mock_send.assert_not_called()
+    assert _convo(db_session).opted_out is True
+
+
+def test_agent_detected_opt_out_suppresses_the_contact(db_session, monkeypatch):
+    """Backstop for stop requests the keyword check doesn't catch."""
+    _enable_ai_agent(monkeypatch)
+    stack, _ = _patched_send([SendResult(success=True, message_id="m_1")])
+    with stack, patch("app.messenger.ai_agent.generate_reply") as mock_agent:
+        mock_agent.return_value = AgentReply(
+            success=True, text="Understood, we won't reach out again.", handoff=False, opt_out=True
+        )
+        handle_inbound_message("psid_1", "I'm done hearing from you people", mid="mid_1", sleep=False)
+
+    convo = _convo(db_session)
+    assert convo.opted_out is True
+    assert convo.status is ConversationStatus.CLOSED
+
+
+def test_ai_agent_is_never_called_once_a_human_owns_the_thread(db_session, monkeypatch):
+    _enable_ai_agent(monkeypatch)
+    db_session.add(Conversation(psid="psid_1", status=ConversationStatus.AWAITING_HUMAN))
+    db_session.commit()
+
+    stack, mock_send = _patched_send([])
+    with stack, patch("app.messenger.ai_agent.generate_reply") as mock_agent:
+        plan = handle_inbound_message("psid_1", "any update?", mid="mid_1", sleep=False)
+
+    assert plan.should_reply is False
+    mock_agent.assert_not_called()
+    mock_send.assert_not_called()
+
+
+def test_zip_is_looked_up_in_code_and_given_to_the_agent_as_a_fact(db_session, monkeypatch):
+    _enable_ai_agent(monkeypatch)
+    stack, _ = _patched_send([SendResult(success=True, message_id="m_1")])
+    with stack, patch("app.messenger.ai_agent.generate_reply") as mock_agent:
+        mock_agent.return_value = AgentReply(success=True, text="Yes, we cover that area!", handoff=False)
+        handle_inbound_message("psid_1", "I have a house in 32114", mid="mid_1", sleep=False)
+
+    facts = mock_agent.call_args.kwargs["location_facts"]
+    assert len(facts) == 1
+    assert "Daytona Beach" in facts[0] and "Volusia County" in facts[0]
+
+    convo = _convo(db_session)
+    assert (convo.zip_code, convo.county, convo.city) == ("32114", "Volusia County", "Daytona Beach")
+
+
+def test_city_they_named_is_kept_when_it_differs_from_the_zip(db_session, monkeypatch):
+    _enable_ai_agent(monkeypatch)
+    stack, _ = _patched_send([SendResult(success=True, message_id="m_1")])
+    with stack, patch("app.messenger.ai_agent.generate_reply") as mock_agent:
+        mock_agent.return_value = AgentReply(
+            success=True, text="Just to check, is it in Ocala or Jacksonville?", handoff=False,
+            extracted={"city": "Ocala"},
+        )
+        handle_inbound_message("psid_1", "it's in Ocala, zip 32209", mid="mid_1", sleep=False)
+
+    convo = _convo(db_session)
+    assert convo.city == "Ocala"
+    assert (convo.zip_code, convo.county) == ("32209", "Duval County")
+
+
+def test_unlisted_florida_zip_is_covered_without_naming_a_county(db_session, monkeypatch):
+    _enable_ai_agent(monkeypatch)
+    stack, _ = _patched_send([SendResult(success=True, message_id="m_1")])
+    with stack, patch("app.messenger.ai_agent.generate_reply") as mock_agent:
+        mock_agent.return_value = AgentReply(success=True, text="Yes, we cover all of Florida!", handoff=False)
+        handle_inbound_message("psid_1", "my zip is 32999", mid="mid_1", sleep=False)
+
+    (fact,) = mock_agent.call_args.kwargs["location_facts"]
+    assert "still in our service area" in fact
+
+    convo = _convo(db_session)
+    assert convo.zip_code == "32999"
+    assert convo.county is None and convo.city is None
+
+
+def test_message_without_a_zip_sends_no_location_facts(db_session, monkeypatch):
+    _enable_ai_agent(monkeypatch)
+    stack, _ = _patched_send([SendResult(success=True, message_id="m_1")])
+    with stack, patch("app.messenger.ai_agent.generate_reply") as mock_agent:
+        mock_agent.return_value = AgentReply(success=True, text="We do cover Daytona!", handoff=False)
+        handle_inbound_message("psid_1", "I have a property in Daytona", mid="mid_1", sleep=False)
+
+    assert mock_agent.call_args.kwargs["location_facts"] is None
+
+
+def test_zip_details_carry_into_the_next_turn_as_known_facts(db_session, monkeypatch):
+    _enable_ai_agent(monkeypatch)
+    stack, _ = _patched_send(
+        [SendResult(success=True, message_id="m_1"), SendResult(success=True, message_id="m_2")]
+    )
+    with stack, patch("app.messenger.ai_agent.generate_reply") as mock_agent:
+        mock_agent.side_effect = [
+            AgentReply(success=True, text="Yes, we cover that area! What's your timeline?", handoff=False),
+            AgentReply(success=True, text="Got it. What kind of shape is it in?", handoff=False),
+        ]
+        handle_inbound_message("psid_1", "32114", mid="mid_1", sleep=False)
+        handle_inbound_message("psid_1", "next month", mid="mid_2", sleep=False)
+
+    known = mock_agent.call_args_list[1].kwargs["known_fields"]
+    assert known == {"zip_code": "32114", "city": "Daytona Beach", "county": "Volusia County"}
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("Do you buy houses?", Intent.SELL),
+        ("Are you still buying in Jacksonville?", Intent.SELL),
+        ("I have a property under contract. Are you buying?", Intent.PARTNER),
+        ("Got a deal for you: 3/2 in Arlington, asking $95k, ARV $180k.", Intent.PARTNER),
+        ("What's your buy box?", Intent.PARTNER),
+        ("Off-market deal on the Westside. Want the details?", Intent.PARTNER),
+        ("Can you send proof of funds?", Intent.PARTNER),
+    ],
+)
+def test_intent_for_messages_from_the_client_test_sheet(text, expected):
+    assert detect_intent(text) is expected
+
+
+def test_agent_intent_overrides_the_keyword_guess(db_session, monkeypatch):
+    _enable_ai_agent(monkeypatch)
+    stack, _ = _patched_send([SendResult(success=True, message_id="m_1")])
+    with stack, patch("app.messenger.ai_agent.generate_reply") as mock_agent:
+        mock_agent.return_value = AgentReply(
+            success=True, text="Thanks, we'll review this one.", handoff=False,
+            intent="partner", submit_lead=True,
+        )
+        handle_inbound_message(
+            "psid_1", "1234 Main St, Jacksonville FL, $120k. Interested?", mid="mid_1", sleep=False
+        )
+
+    assert _convo(db_session).intent is Intent.PARTNER
+
+
+def test_request_for_a_person_submits_the_lead_while_the_bot_keeps_helping(db_session, monkeypatch):
+    """A lead goes to the team without waiting for every detail."""
+    _enable_ai_agent(monkeypatch)
+    stack, _ = _patched_send([SendResult(success=True, message_id="m_1")])
+    with stack, patch("app.messenger.ai_agent.generate_reply") as mock_agent:
+        mock_agent.return_value = AgentReply(
+            success=True,
+            text="Of course. What's the best number to reach you, and when's a good time to call?",
+            handoff=False,
+            submit_lead=True,
+        )
+        handle_inbound_message("psid_1", "Can I talk to someone on the phone?", mid="mid_1", sleep=False)
+
+    convo = _convo(db_session)
+    assert convo.lead_submitted_at is not None
+    assert convo.status is ConversationStatus.AUTO_REPLIED  # the bot can still collect the number
+    assert [row["psid"] for row in pending_handoffs()] == ["psid_1"]
+
+
+def test_lead_details_are_saved_before_the_reply_is_sent(db_session, monkeypatch):
+    from app.database.db import session_scope
+
+    _enable_ai_agent(monkeypatch)
+    seen_at_send_time = {}
+
+    def send_and_check(psid, text, quick_replies=None):
+        with session_scope() as session:
+            convo = session.scalar(select(Conversation).where(Conversation.psid == psid))
+            seen_at_send_time["phone"] = convo.phone_number
+            seen_at_send_time["lead"] = convo.lead_submitted_at
+        return SendResult(success=True, message_id="m_1")
+
+    stack, _ = _patched_send(send_and_check)
+    with stack, patch("app.messenger.ai_agent.generate_reply") as mock_agent:
+        mock_agent.return_value = AgentReply(
+            success=True, text="I've passed your details to our team.", handoff=False,
+            submit_lead=True, extracted={"phone_number": "904-555-0100"},
+        )
+        handle_inbound_message("psid_1", "904-555-0100, text me", mid="mid_1", sleep=False)
+
+    assert seen_at_send_time["phone"] == "904-555-0100"
+    assert seen_at_send_time["lead"] is not None
+
+
+def test_failed_lead_save_never_claims_the_details_were_passed_along(db_session, monkeypatch):
+    from contextlib import contextmanager
+
+    from app.messenger import responder
+
+    _enable_ai_agent(monkeypatch)
+    real_scope = responder.session_scope
+    calls = {"n": 0}
+
+    @contextmanager
+    def scope_failing_on_the_lead_save():
+        calls["n"] += 1
+        if calls["n"] == 2:  # 1 = record the message, 2 = save the lead, 3 = after sending
+            raise RuntimeError("database is locked")
+        with real_scope() as session:
+            yield session
+
+    monkeypatch.setattr(responder, "session_scope", scope_failing_on_the_lead_save)
+
+    stack, mock_send = _patched_send([SendResult(success=True, message_id="m_1")])
+    with stack, patch("app.messenger.ai_agent.generate_reply") as mock_agent:
+        mock_agent.return_value = AgentReply(
+            success=True, text="I've passed your details to our team.", handoff=False,
+            submit_lead=True, extracted={"phone_number": "904-555-0100"},
+        )
+        plan = handle_inbound_message("psid_1", "904-555-0100", mid="mid_1", sleep=False)
+
+    assert mock_send.call_args.args[1] == LEAD_NOT_SAVED_REPLY
+    assert plan.handoff is True
+    assert _convo(db_session).status is ConversationStatus.AWAITING_HUMAN
+
+
+def test_pending_handoffs_lists_leads_but_never_anyone_who_opted_out(db_session):
+    db_session.add_all([
+        Conversation(psid="handed_off", status=ConversationStatus.AWAITING_HUMAN),
+        Conversation(psid="opted_out", status=ConversationStatus.AWAITING_HUMAN, opted_out=True),
+        Conversation(psid="submitted", status=ConversationStatus.AUTO_REPLIED, lead_submitted_at=utcnow()),
+        Conversation(psid="just_chatting", status=ConversationStatus.AUTO_REPLIED),
+    ])
+    db_session.commit()
+
+    assert sorted(row["psid"] for row in pending_handoffs()) == ["handed_off", "submitted"]
+
+
+def test_time_spent_thinking_counts_toward_the_reply_delay(db_session, enabled):
+    """The client's ~35s first reply is measured from when the message
+    arrived, so the AI's own processing time isn't added on top."""
+    import itertools
+
+    clock = itertools.chain([100.0], itertools.repeat(112.0))
+    sleeps: list[float] = []
+    stack, _ = _patched_send([SendResult(success=True, message_id="m_1")])
+    with stack, \
+         patch("app.messenger.responder.time.monotonic", side_effect=lambda: next(clock)), \
+         patch("app.messenger.responder.time.sleep", side_effect=sleeps.append), \
+         patch("app.messenger.responder.compute_delay", return_value=40.0):
+        handle_inbound_message("psid_1", "SELL now", mid="mid_1", sleep=True)
+
+    assert sum(sleeps) == pytest.approx(28.0)  # 40s target minus 12s already spent
+
+
+def test_fallback_and_comment_copy_never_uses_a_dash():
+    import json
+    import re
+
+    from app.config import TEMPLATES_FILE
+
+    payload = json.loads(TEMPLATES_FILE.read_text(encoding="utf-8"))
+    texts: list[str] = []
+
+    def collect(node):
+        if isinstance(node, str):
+            texts.append(node)
+        elif isinstance(node, list):
+            for item in node:
+                collect(item)
+        elif isinstance(node, dict):
+            for key, value in node.items():
+                if key != "_comment":
+                    collect(value)
+
+    for block in ("auto_reply", "seller_flow", "comment_reply"):
+        collect(payload[block])
+
+    assert texts
+    for text in texts:
+        assert not re.search(r"[–—]|\s-\s", text), text
