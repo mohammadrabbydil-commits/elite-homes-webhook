@@ -1166,3 +1166,35 @@ def test_a_name_they_give_beats_the_profile_name(db_session, monkeypatch):
         handle_inbound_message("psid_1", "It's in Tampa", mid="mid_1", sleep=False)
 
     assert mock_agent.call_args.kwargs["first_name"] == "Dana"
+
+
+# --- Scripted fallback (AI unavailable) still follows the calendar rule ------
+
+
+def test_fallback_scheduling_request_gets_the_calendar_reply_with_their_name(db_session, enabled):
+    from app.messenger.ai_agent import MEETING_LINK
+
+    stack, mock_send = _patched_send([SendResult(success=True, message_id="m_1")])
+    with stack, patch("app.messenger.responder.get_user_profile", return_value={"first_name": "Dana"}):
+        plan = handle_inbound_message("psid_1", "Can we set up a meeting?", mid="mid_1", sleep=False)
+
+    assert plan.text.startswith("Hi Dana, thanks for reaching out. Here is our calendar link:")
+    assert MEETING_LINK in plan.text
+    assert plan.submit_lead is True
+    assert _convo(db_session).lead_submitted_at is not None
+
+
+def test_fallback_price_question_is_not_saved_as_the_address(db_session, enabled):
+    from app.messenger.ai_agent import FALLBACK_REPLY
+
+    stack, mock_send = _patched_send(
+        [SendResult(success=True, message_id="m_1"), SendResult(success=True, message_id="m_2")]
+    )
+    with stack:
+        handle_inbound_message("psid_1", "I want to sell my house", mid="mid_1", sleep=False)
+        plan = handle_inbound_message("psid_1", "What would you pay for it?", mid="mid_2", sleep=False)
+
+    assert plan.text == FALLBACK_REPLY
+    convo = _convo(db_session)
+    assert convo.property_address is None
+    assert convo.stage is FlowStage.AWAITING_ADDRESS

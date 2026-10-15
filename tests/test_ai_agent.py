@@ -755,3 +755,18 @@ def test_curly_apostrophes_are_normalised(with_key):
     with patch("app.messenger.ai_agent.requests.post") as mock_post:
         mock_post.return_value = _openai_response("We’re buying. What’s the address?")
         assert ai_agent.generate_reply([], "hi").text == "We're buying. What's the address?"
+
+
+def test_ai_failures_and_successes_are_recorded_for_the_health_check(monkeypatch, with_key):
+    monkeypatch.setattr(ai_agent, "AI_STATUS", {"last_ok_at": None, "last_error_at": None, "last_error": None})
+    with patch("app.messenger.ai_agent.requests.post") as mock_post:
+        resp = Mock()
+        resp.json.return_value = {"error": {"message": "You have no credits remaining."}}
+        mock_post.return_value = resp
+        ai_agent.generate_reply([], "hi")
+    assert ai_agent.AI_STATUS["last_error"] == "You have no credits remaining."
+
+    with patch("app.messenger.ai_agent.requests.post") as mock_post:
+        mock_post.return_value = _openai_response("Hi! How can we help?")
+        ai_agent.generate_reply([], "hi")
+    assert ai_agent.AI_STATUS["last_ok_at"] is not None

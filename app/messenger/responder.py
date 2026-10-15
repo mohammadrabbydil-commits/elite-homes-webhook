@@ -330,6 +330,49 @@ def _start_flow(first_name: str | None) -> ReplyPlan:
     )
 
 
+# For the scripted fallback (AI unavailable): requests the client wants
+# answered with the calendar reply, and price questions that get the
+# walkthrough-then-calendar reply.
+_SCHEDULING_REQUEST = re.compile(
+    r"\b(?:re)?schedul\w*|\bmeet(?:ing)?\b|\bappointment\b|\bwalk[\s-]?through\b|\bcalendar\b"
+    r"|\bcome (?:look|see|by|out)\b|\bvisit\b|\bset up a call\b|\bbook (?:a|an)\b",
+    re.IGNORECASE,
+)
+_PRICE_QUESTION = re.compile(
+    r"\b(?:pay|offer|price|worth|value|how much)\b", re.IGNORECASE
+)
+
+
+def _fallback_scheduling_plan(
+    text: str, conversation: Conversation, intent: Intent, *, first_reply: bool, stage: FlowStage
+) -> ReplyPlan | None:
+    """When the AI agent is unavailable, a scheduling request or a price
+    question still gets the client's calendar reply instead of being taken
+    as the answer to the scripted flow's next question."""
+    if _PRICE_QUESTION.search(text):
+        reply = ai_agent.FALLBACK_REPLY
+    elif _SCHEDULING_REQUEST.search(text):
+        reply = ai_agent.SCHEDULE_REPLY
+    else:
+        return None
+    name = _greeting_name(conversation)
+    if first_reply and name:
+        reply = (
+            reply.replace("Thanks for reaching out.", f"Hi {name}, thanks for reaching out.", 1)
+            if reply.startswith("Thanks for reaching out.")
+            else f"Hi {name}! {reply}"
+        )
+    return ReplyPlan(
+        should_reply=True,
+        text=reply,
+        delay_seconds=compute_delay(is_first_reply=first_reply),
+        intent=intent,
+        handoff=False,
+        submit_lead=True,
+        new_stage=stage,
+    )
+
+
 def _intent_from_agent(value: str | None, fallback: Intent) -> Intent:
     if value in {"sell", "partner", "buy"}:
         return Intent(value)
@@ -423,6 +466,10 @@ def _advance_flow(
         if plan is not None:
             return plan
 
+    plan = _fallback_scheduling_plan(text, conversation, conversation.intent, first_reply=False, stage=stage)
+    if plan is not None:
+        return plan
+
     field = _STAGE_FIELD[stage]
     captured = {field: text.strip()[:500]}
     following = _next_stage(stage)
@@ -511,6 +558,12 @@ def plan_reply(
         )
         if plan is not None:
             return plan
+
+    plan = _fallback_scheduling_plan(
+        text, conversation, intent, first_reply=True, stage=FlowStage.AWAITING_ADDRESS
+    )
+    if plan is not None:
+        return plan
 
     if intent is Intent.SELL:
         return _start_flow(first_name)

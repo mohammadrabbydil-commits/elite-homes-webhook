@@ -21,6 +21,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import BASE_DIR, settings
 from app.database.db import init_db
+from app.messenger import ai_agent
 from app.messenger.comment_responder import handle_inbound_comment
 from app.messenger.responder import handle_inbound_message
 from app.pages.explainers import router as explainers_router
@@ -165,8 +166,12 @@ def create_app() -> FastAPI:
 
     @app.get("/health")
     def health() -> dict:
+        import os
+
         return {
             "status": "ok",
+            # Set by Render on every deploy, so this shows which commit is live.
+            "version": (os.getenv("RENDER_GIT_COMMIT") or "local")[:7],
             "autoreply_enabled": settings.autoreply_enabled,
             "first_reply_delay_seconds": [
                 settings.autoreply_first_min_delay_seconds,
@@ -178,6 +183,7 @@ def create_app() -> FastAPI:
             ],
             "ai_agent_enabled": settings.ai_agent_enabled,
             "ai_agent_configured": bool(settings.openai_api_key),
+            "ai_agent_status": ai_agent.AI_STATUS,
         }
 
     @app.get("/debug/recent")

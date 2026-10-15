@@ -612,7 +612,7 @@ def _parse_agent_payload(parsed: dict) -> dict:
     }
 
 
-def generate_reply(
+def _generate_reply(
     history: list[Message],
     user_message: str,
     known_fields: dict[str, str] | None = None,
@@ -705,3 +705,29 @@ def generate_reply(
         submit_lead=result["submit_lead"] or result["handoff"],
         opt_out=result["opt_out"],
     )
+
+
+# The last AI call's outcome, shown on /health so a failing AI (an empty
+# OpenAI balance, a bad key) is visible immediately instead of only showing
+# up as replies quietly falling back to the scripted flow.
+AI_STATUS: dict = {"last_ok_at": None, "last_error_at": None, "last_error": None}
+
+
+def generate_reply(
+    history: list[Message],
+    user_message: str,
+    known_fields: dict[str, str] | None = None,
+    location_facts: list[str] | None = None,
+    first_name: str | None = None,
+) -> AgentReply:
+    """One AI turn (see _generate_reply), with its outcome recorded in AI_STATUS."""
+    from datetime import datetime, timezone
+
+    result = _generate_reply(history, user_message, known_fields, location_facts, first_name)
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    if result.success:
+        AI_STATUS["last_ok_at"] = now
+    else:
+        AI_STATUS["last_error_at"] = now
+        AI_STATUS["last_error"] = (result.error or "unknown error")[:300]
+    return result

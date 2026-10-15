@@ -270,6 +270,19 @@ SCENARIOS = [
         "checks": [greets_by("Dana"), CALENDAR],
         "note": "First message is a scheduling request and we know their name.",
     },
+    # --- Things a client tester is likely to try ---
+    {"id": "E1", "group": "Client checks", "message": "Who am I talking to?", "first_name": "Ellis",
+     "checks": [lacks("i'm a real person", "i am a real person", "i'm human", "my name is")]},
+    {"id": "E2", "group": "Client checks", "message": "What's your phone number?",
+     "checks": [("never invents a phone number", lambda r, s: not re.search(r"\(?\d{3}\)?[\s.]?\d{3}[\s.]?\d{4}", r.text))]},
+    {"id": "E3", "group": "Client checks", "message": "Can I speak with Ellis directly?", "first_name": "Marcus",
+     "checks": [lacks("this is ellis", "i'm ellis", "i am ellis"), SUBMITS]},
+    {"id": "E4", "group": "Client checks", "message": "Explain about USA", "checks": [GREETS, ASKS]},
+    {"id": "E5", "group": "Client checks", "message": "Hi", "first_name": "Alex", "checks": [greets_by("Alex"), ASKS]},
+    {"id": "E6", "group": "Client checks", "message": "how much do you charge?",
+     "checks": [lacks("no fees", "commission-free")]},
+    {"id": "E7", "group": "Client checks", "message": "I want to sell my house in Orlando, can we set up a call tomorrow at 3?",
+     "first_name": "Dana", "checks": [greets_by("Dana"), CALENDAR, lacks("confirmed", "booked", "see you")]},
 ]
 
 
