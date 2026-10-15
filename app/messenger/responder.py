@@ -123,6 +123,39 @@ _STAGE_FIELD: dict[FlowStage, str] = {
 
 _KNOWN_FIELD_NAMES = tuple(f for f in EXTRACTABLE_FIELDS if f != "lead_summary") + ("county",)
 
+# Words that mark a Facebook profile name as a business rather than a person.
+_BUSINESS_WORDS = frozenset(
+    "llc inc corp corporation co company group homes home realty realtor realtors properties "
+    "property investments investing investors invest capital holdings enterprises solutions "
+    "services real estate team ventures partners construction builders management agency "
+    "global usa studio shop store official media marketing consulting rentals buyers cash "
+    "house houses land development associates trust fund bank llp ltd pllc acquisitions "
+    "remodeling roofing renovations brokerage mortgage title insurance".split()
+)
+_NAME_WORD = re.compile(r"^[A-Za-z][A-Za-z'\-]*$")
+
+
+def person_first_name(full_name: str | None) -> str | None:
+    """The first name to greet someone by, or None when the name is missing
+    or looks like a business ("MJ Capital LLC", "Sunshine Homes"). The client
+    only wants a person's own name used, never a company's."""
+    words = (full_name or "").replace(",", " ").split()
+    if not words:
+        return None
+    if any(w.lower().strip(".&") in _BUSINESS_WORDS or any(ch.isdigit() for ch in w) or w == "&" for w in words):
+        return None
+    first = words[0]
+    if not _NAME_WORD.match(first) or len(first) < 2:
+        return None
+    if len(words) == 1 and first.isupper() and len(first) > 3:  # an acronym like "EHUSA"
+        return None
+    return first[0].upper() + first[1:]
+
+
+def _greeting_name(conversation: Conversation) -> str | None:
+    """A name they told us beats their profile name."""
+    return person_first_name(conversation.contact_name) or person_first_name(conversation.name)
+
 
 def _known_fields(conversation: Conversation) -> dict[str, str]:
     """Already-captured columns on this conversation, so the AI agent is told
@@ -324,6 +357,7 @@ def _ai_plan(
         text,
         known_fields=_known_fields(conversation),
         location_facts=[describe_mention(m) for m in mentions] or None,
+        first_name=_greeting_name(conversation),
     )
     if not result.success:
         logger.warning("AI agent unavailable (%s), falling back to the scripted flow", result.error)
@@ -638,7 +672,7 @@ def handle_inbound_message(
             )
         )
 
-        first_name = (conversation.name or "").split()[0] if conversation.name else None
+        first_name = _greeting_name(conversation)
         plan = plan_reply(text, conversation, first_name, quick_reply_payload, history)
 
         if plan.intent is not Intent.UNKNOWN:

@@ -3,8 +3,8 @@
 When someone comments one of the trigger keywords on a Page post, this posts
 a public reply under their comment and sends them a private-reply DM to open
 a Messenger thread. The public reply never asks for an address or contact
-details - those are only ever asked for privately. The DM introduces the
-virtual assistant and asks where the property is, and the resulting
+details - those are only ever asked for privately. The DM greets them by
+first name (never a business name) and asks where the property is, and the resulting
 Conversation is marked as already replied to - so if the person answers in
 Messenger, the agent picks it up from there rather than needing separate
 logic. Someone who asked us to stop is never DMed again.
@@ -34,6 +34,7 @@ from app.database.models import (
     utcnow,
 )
 from app.messenger.api import reply_to_comment, send_private_reply
+from app.messenger.responder import person_first_name
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +101,7 @@ def handle_inbound_comment(
             return {"handled": False, "reason": f"status is {conversation.status.value}"}
 
         conversation_id = conversation.id
-        first_name = (commenter_name or "").split()[0] if commenter_name else None
+        first_name = person_first_name(commenter_name)
 
     config = _load_comment_reply_config()
     public_text = random.choice(config.get("public_replies") or ["Thanks for the comment!"])

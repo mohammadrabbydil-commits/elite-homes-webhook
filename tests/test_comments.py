@@ -153,12 +153,24 @@ def test_public_reply_never_asks_for_an_address_or_contact_details():
         assert "address" not in lowered and "phone" not in lowered and "number" not in lowered
 
 
-def test_private_reply_introduces_the_virtual_assistant_and_asks_where_the_property_is():
+def test_private_reply_never_introduces_itself_and_asks_where_the_property_is():
     from app.messenger.comment_responder import _load_comment_reply_config
 
     private = _load_comment_reply_config()["private_reply"].lower()
-    assert "virtual assistant" in private
+    assert "virtual assistant" not in private
     assert "city or zip" in private
+
+
+def test_business_profile_name_is_never_used_in_the_private_reply(db_session, enabled):
+    with patch("app.messenger.comment_responder.reply_to_comment") as mock_public, \
+         patch("app.messenger.comment_responder.send_private_reply") as mock_private:
+        mock_public.return_value = SendResult(success=True, message_id="c_1")
+        mock_private.return_value = SendResult(success=True, message_id="m_1")
+        handle_inbound_comment("comment_1", "user_1", "Do you buy houses?", "Sunshine Homes LLC")
+
+    private_text = mock_private.call_args.args[1]
+    assert private_text.startswith("Hi there,")
+    assert "Sunshine" not in private_text
 
 
 def test_comment_reply_copy_never_mentions_price():

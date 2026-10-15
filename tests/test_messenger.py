@@ -286,8 +286,9 @@ def test_sell_message_starts_flow_with_greeting_and_faq_buttons(db_session, enab
     assert plan.should_reply is True
     assert plan.intent is Intent.SELL
     assert plan.quick_replies and len(plan.quick_replies) == 3
-    # Introduces the virtual assistant, then asks where the property is.
-    assert "virtual assistant" in plan.text.lower()
+    # Greets them by first name, never introduces itself, asks where the property is.
+    assert plan.text.startswith("Hi Dana")
+    assert "virtual assistant" not in plan.text.lower()
     assert any(w in plan.text.lower() for w in ("located", "city or zip", "where's the house"))
 
     convo = db_session.scalar(select(Conversation).where(Conversation.psid == "psid_1"))
@@ -1112,3 +1113,56 @@ def test_no_facebook_history_still_replies_normally(db_session, enabled):
 
     assert plan.should_reply is True
     mock_send.assert_called_once()
+
+
+# --- Greeting by first name (never a business name) ---------------------------
+
+
+@pytest.mark.parametrize(
+    "profile_name, expected",
+    [
+        ("Dana Whitfield", "Dana"),
+        ("mohammad rabby", "Mohammad"),
+        ("Mary-Jo Smith", "Mary-Jo"),
+        ("Sunshine Homes LLC", None),
+        ("MJ Capital", None),
+        ("Elite Homes USA Group", None),
+        ("Smith & Sons", None),
+        ("EHUSA", None),
+        ("Jax Realty", None),
+        ("Bob Investments", None),
+        ("123 Properties", None),
+        ("", None),
+        (None, None),
+    ],
+)
+def test_first_name_is_only_taken_from_a_persons_name(profile_name, expected):
+    from app.messenger.responder import person_first_name
+
+    assert person_first_name(profile_name) == expected
+
+
+def test_the_agent_gets_the_persons_first_name_but_never_a_business_name(db_session, monkeypatch):
+    _enable_ai_agent(monkeypatch)
+    for psid, profile in (("person", {"first_name": "Dana", "last_name": "Whitfield"}),
+                          ("business", {"first_name": "Sunshine", "last_name": "Homes LLC"})):
+        stack, _ = _patched_send([SendResult(success=True, message_id=f"m_{psid}")])
+        with stack, patch("app.messenger.responder.get_user_profile", return_value=profile), \
+             patch("app.messenger.ai_agent.generate_reply") as mock_agent:
+            mock_agent.return_value = AgentReply(success=True, text="Hi! How can we help?", handoff=False)
+            handle_inbound_message(psid, "hello", mid=f"mid_{psid}", sleep=False)
+        expected = "Dana" if psid == "person" else None
+        assert mock_agent.call_args.kwargs["first_name"] == expected
+
+
+def test_a_name_they_give_beats_the_profile_name(db_session, monkeypatch):
+    _enable_ai_agent(monkeypatch)
+    db_session.add(Conversation(psid="psid_1", name="Sunshine Homes LLC", contact_name="Dana",
+                                status=ConversationStatus.AUTO_REPLIED, stage=FlowStage.AWAITING_CONDITION))
+    db_session.commit()
+    stack, _ = _patched_send([SendResult(success=True, message_id="m_1")])
+    with stack, patch("app.messenger.ai_agent.generate_reply") as mock_agent:
+        mock_agent.return_value = AgentReply(success=True, text="Got it. What shape is it in?", handoff=False)
+        handle_inbound_message("psid_1", "It's in Tampa", mid="mid_1", sleep=False)
+
+    assert mock_agent.call_args.kwargs["first_name"] == "Dana"

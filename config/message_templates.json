@@ -58,61 +58,61 @@
     "template": "Hi {first_name} - just following up on my note from last week. If the timing isn't right, no problem at all and I won't reach out again. Thanks for your time."
   },
   "auto_reply": {
-    "_comment": "Fallback replies, used only when the AI agent is unavailable, to people who message the Page FIRST (Meta-sanctioned, 24h window). Several variants per case so consecutive leads never see identical text. No dashes as punctuation anywhere (client rule). Placeholders: {first_name}, {business_name}, {city}.",
+    "_comment": "Fallback replies, used only when the AI agent is unavailable, to people who message the Page FIRST (Meta-sanctioned, 24h window). Several variants per case. Never introduces itself (client rule) and no dashes as punctuation. {first_name} is only a person's first name, never a business name, and falls back to 'there'.",
     "business_name": "Elite Homes USA Group",
     "city": "Jacksonville",
     "business_hours": {
       "sell": [
-        "Hi {first_name}! I'm {business_name}'s virtual assistant. We buy houses throughout Florida. Where's the property located?",
-        "Hey {first_name}, thanks for reaching out! I'm the team's virtual assistant. What city or ZIP is the property in?",
-        "Hi {first_name}! I'm {business_name}'s virtual assistant, and yes, we're buying all over Florida. Where's the house?"
+        "Hi {first_name}! We buy houses as-is throughout Florida. Where's the property located?",
+        "Hi {first_name}, thanks for reaching out! What city or ZIP is the property in?",
+        "Hi {first_name}! Yes, we're buying all over Florida. Where's the house?"
       ],
       "buy": [
-        "Hi {first_name}, thanks for reaching out! I'm {business_name}'s virtual assistant. I'll pass this to the team so they can follow up with you.",
-        "Hey {first_name}, appreciate the message. I'm the team's virtual assistant, and I'll pass this along so someone can get back to you.",
-        "Hi {first_name}, good to hear from you! I'm {business_name}'s virtual assistant. I'll speak with the team and get back to you.",
-        "Hey {first_name}, thanks for the message! I'm the team's virtual assistant. I'm passing this along to the team now."
+        "Hi {first_name}, thanks for reaching out! I'll pass this to the team so they can follow up with you.",
+        "Hi {first_name}, appreciate the message. I'll pass this along so someone can get back to you.",
+        "Hi {first_name}, good to hear from you! I'll speak with the team and get back to you.",
+        "Hi {first_name}, thanks for the message! I'm passing this along to the team now."
       ],
       "partner": [
-        "Hi {first_name}, thanks for reaching out! I'm {business_name}'s virtual assistant. Send over the deal and we'll review it. Is it on septic or city sewer, and what's the square footage?",
-        "Hey {first_name}, appreciate you reaching out. I'm the team's virtual assistant. We buy single-family homes, 1,000 sq ft and up, on city sewer anywhere in Florida. What do you have?",
-        "Hi {first_name}! I'm {business_name}'s virtual assistant. Send over the address, asking price, and square footage and we'll review it. I'll speak with the team and get back to you.",
-        "Hey {first_name}, thanks for the message! I'm the team's virtual assistant. You can send deal sheets to Ellis@elitehomes1.com, and I'll speak with the team and get back to you."
+        "Hi {first_name}, thanks for reaching out! Send over the deal and we'll review it. Is it on septic or city sewer, and what's the square footage?",
+        "Hi {first_name}, appreciate you reaching out. We buy single-family homes, 1,000 sq ft and up, on city sewer anywhere in Florida. What do you have?",
+        "Hi {first_name}! Send over the address, asking price, and square footage and we'll review it. I'll speak with the team and get back to you.",
+        "Hi {first_name}, thanks for the message! You can send deal sheets to Ellis@elitehomes1.com, and I'll speak with the team and get back to you."
       ],
       "default": [
-        "Hi {first_name}! I'm {business_name}'s virtual assistant. We help homeowners throughout Florida. What can we help you with?",
-        "Hey {first_name}, thanks for reaching out! I'm the team's virtual assistant. How can we help?",
-        "Hi {first_name}, good to hear from you! I'm {business_name}'s virtual assistant. What can I do for you?",
-        "Hey {first_name}, thanks for the message! I'm the team's virtual assistant. What's on your mind?"
+        "Hi {first_name}! We help homeowners throughout Florida. What can we help you with?",
+        "Hi {first_name}, thanks for reaching out! How can we help?",
+        "Hi {first_name}, good to hear from you! What can we do for you?",
+        "Hi {first_name}, thanks for the message! What's on your mind?"
       ]
     },
     "after_hours": {
       "sell": [
-        "Hi {first_name}, thanks for reaching out! I'm {business_name}'s virtual assistant. It's after hours, but send over where the property is and I'll speak with the team in the morning.",
-        "Hey {first_name}, appreciate the message. I'm the team's virtual assistant. It's late here, but tell me the city or ZIP and the team will pick it up in the morning."
+        "Hi {first_name}, thanks for reaching out! It's after hours, but send over where the property is and the team will pick it up in the morning.",
+        "Hi {first_name}, appreciate the message. It's late here, but tell me the city or ZIP and the team will pick it up in the morning."
       ],
       "default": [
-        "Hi {first_name}, thanks for reaching out! I'm {business_name}'s virtual assistant. I'll speak with the team and get back to you in the morning.",
-        "Hey {first_name}, got your message. I'm the team's virtual assistant, and I'll pass this along first thing in the morning.",
-        "Hi {first_name}, thanks for the message! I'm {business_name}'s virtual assistant. It's after hours here, but the team will see this first thing tomorrow.",
-        "Hey {first_name}, appreciate you reaching out! I'm the team's virtual assistant. I'll speak with the team and get back to you in the morning."
+        "Hi {first_name}, thanks for reaching out! I'll speak with the team and get back to you in the morning.",
+        "Hi {first_name}, got your message. I'll pass this along first thing in the morning.",
+        "Hi {first_name}, thanks for the message! It's after hours here, but the team will see this first thing tomorrow.",
+        "Hi {first_name}, appreciate you reaching out! I'll speak with the team and get back to you in the morning."
       ]
     }
   },
   "seller_flow": {
-    "_comment": "Fallback question intake for SELL-intent conversations, used only when the AI agent is unavailable. NEVER add a dollar figure or a specific offer anywhere here. The flow collects information, it does not negotiate. No dashes as punctuation (client rule). Several phrasings per stage so this path doesn't sound scripted either.",
+    "_comment": "Fallback question intake for SELL-intent conversations, used only when the AI agent is unavailable. NEVER add a dollar figure or a specific offer anywhere here. Never introduces itself (client rule), no dashes as punctuation, and the closing uses the client's calendar wording.",
     "business_hours": {
       "greetings": [
-        "Hi {first_name}! I'm Elite Homes USA Group's virtual assistant. We buy houses throughout Florida. Where's the property located?",
-        "Hi {first_name}, thanks for reaching out! I'm the team's virtual assistant. What city or ZIP is the property in?",
-        "Hey {first_name}! I'm Elite Homes USA Group's virtual assistant, and we cover all of Florida. Where's the house?"
+        "Hi {first_name}! We buy houses as-is throughout Florida. Where's the property located?",
+        "Hi {first_name}, thanks for reaching out! What city or ZIP is the property in?",
+        "Hi {first_name}! We cover all of Florida. Where's the house?"
       ]
     },
     "after_hours": {
       "greetings": [
-        "Hi {first_name}, thanks for reaching out! I'm Elite Homes USA Group's virtual assistant. It's after hours, but I can grab a few details now so the team has them in the morning. Where's the property located?",
-        "Hi {first_name}! I'm the team's virtual assistant. It's late on our end, but let's get a head start. What city or ZIP is the property in?",
-        "Hey {first_name}, thanks for the message! I'm Elite Homes USA Group's virtual assistant. The team's offline for the night, but where's the house located?"
+        "Hi {first_name}, thanks for reaching out! It's after hours, but I can grab a few details now so the team has them in the morning. Where's the property located?",
+        "Hi {first_name}! It's late on our end, but let's get a head start. What city or ZIP is the property in?",
+        "Hi {first_name}, thanks for the message! The team's offline for the night, but where's the house located?"
       ]
     },
     "faq_quick_replies": [
@@ -176,7 +176,7 @@
         ]
       }
     },
-    "closing_message": "Thank you! I'll speak with the team and get back to you. If you'd like, you can also book a time with them here: https://elite-homes-webhook.onrender.com/schedule"
+    "closing_message": "Thank you! Here is our calendar link: https://elite-homes-webhook.onrender.com/schedule Please pick the next date that works best for you. I will have our management reach out to you."
   },
   "comment_reply": {
     "_comment": "A public comment containing one of these keywords gets a public reply plus a private-reply DM to start the Messenger conversation. Requires pages_manage_engagement. Never ask for an address or contact details publicly, never a price or an offer, and no dashes as punctuation.",
@@ -193,6 +193,6 @@
       "Thanks for the comment! We buy throughout Florida. Check your messages and we can take it from there.",
       "Appreciate you reaching out! We cover Florida, and we just sent you a private message."
     ],
-    "private_reply": "Hi {first_name}, thanks for commenting! I'm Elite Homes USA Group's virtual assistant. We help homeowners throughout Florida. What city or ZIP is the property in?"
+    "private_reply": "Hi {first_name}, thanks for commenting! We help homeowners throughout Florida. What city or ZIP is the property in?"
   }
 }

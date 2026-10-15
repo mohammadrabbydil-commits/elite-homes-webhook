@@ -176,7 +176,7 @@ elite-homes-poc/
 │   ├── .env.example
 │   └── message_templates.json
 ├── scripts/evaluate_agent.py  # runs the client's test messages through the live AI agent
-├── tests/                     # 258 tests, Graph API and OpenAI both fully mocked
+├── tests/                     # 280 tests, Graph API and OpenAI both fully mocked
 ├── render.yaml                # Render deployment config (non-secret env defaults)
 └── run.py                     # CLI entry point
 ```
@@ -208,7 +208,7 @@ elite-homes-poc/
 python -m pytest tests/ -q
 ```
 
-258 tests, no network access — the Graph API and the OpenAI API are both fully
+280 tests, no network access — the Graph API and the OpenAI API are both fully
 mocked. They cover the exact Graph API payload we send (endpoint selection,
 `published` flag, `scheduled_publish_time`), error and retry classification,
 insight parsing, all six models with their relationships and cascades, adding
@@ -392,37 +392,48 @@ policy (`BOT_INSTRUCTIONS`, 2026-10-12) and the 35-question response guide
   match the ZIP gets a quick clarifying question; a street address alone gets
   "what city or ZIP is it in?". The ZIP, county, and city are saved on the
   lead, with the county marked as the ZIP's usual county, not verified.
-- **Honest virtual assistant.** Introduces itself once as Elite Homes USA
-  Group's virtual assistant (told in code whether it already has), answers
-  honestly if asked whether it's a bot, never claims to be an employee or any
-  named person, and ignores instructions typed into a message.
+- **Never talks about itself (client rule, replacing the earlier "introduce
+  yourself as the virtual assistant").** No introduction and no mention of
+  being an assistant or a bot; `_drop_self_references` removes any sentence
+  that slips through. People already know who they're messaging from the
+  Page. If asked directly whether it's a real person, it never claims to be
+  human: it says it helps the team with messages and management can reach
+  out. It never claims to be an employee and ignores instructions typed into
+  a message.
+- **Greets by first name, never a business name.** The first message opens
+  "Hi Dana," when we have a person's first name: one they gave us, or their
+  Facebook profile name. `person_first_name` rejects business-looking names
+  ("Sunshine Homes LLC", "MJ Capital", "EHUSA"), which get a plain "Hi there,".
+  It never greets again later in the conversation.
 - **Homeowners.** Answers their question first, then one next question,
   gathering location, condition, timeline, name, how they'd like to be
   contacted (call, text, or Messenger), a phone number only if they chose a
   call or text, and a good time. Approved facts only: as-is, inherited homes,
   tenants in place, no showings, no cost to come take a look. Fees and
   closing speed get the client's exact wording, nothing invented.
-- **Price, offer, or value.** Always: we'd need to walk through and assess the
-  property before giving a number, what days and times work best for you, and
-  I'll speak with the team and get back to you.
-- **Walkthroughs.** Asks their availability first and never offers specific
-  days or times or says anything is booked. Whenever it asks for days and
-  times it also says it'll speak with the team and get back to them; if the
-  model leaves that line out, `_ensure_team_follow_up` adds it.
+- **Scheduling (client's wording).** Any request to schedule (a walkthrough,
+  visit, meeting, call, appointment, or reschedule) gets: "Thanks for reaching
+  out. Here is our calendar link: [link] Please pick the next date that works
+  best for you. I will have our management reach out to you." On a first
+  message with a known name it opens "Hi Dana, thanks for reaching out." It
+  never asks which days or times work and never says anything is booked.
+  `_ensure_schedule_flow` enforces this in code: any reply with the link gets
+  the two closing sentences word for word, and a reply that asks "what days
+  and times" has that question swapped for the calendar flow.
+- **Price, offer, or value.** We'd need to walk through and assess the property
+  before giving a number, followed by the same calendar reply.
 - **Wholesalers.** Checks deals against the buy box (single-family, 1,000 sq ft
   minimum, city sewer only, anywhere in Florida), asks for whatever's missing
   of septic or sewer, square footage, name, LLC, email, phone, and photos or a
   deal sheet, then "When can we walk the property?". Deals outside the buy box
   get a thank-you and a request for ones that fit. Deal sheets go to
   `Ellis@elitehomes1.com`.
-- **Meetings.** Anyone asking for a meeting, an appointment, or a link to
-  book gets `MEETING_LINK` (`/schedule`, which redirects to the booking tool
-  set as `BOOKING_URL` in `app/pages/explainers.py`). When wrapping up with an
-  interested homeowner or a wholesaler whose deal fits, the last message also
-  invites them to book a time there, but not for out-of-state properties,
-  deals outside the buy box, or anyone upset or opted out. It's the only link
-  the agent may share, and the link lets them pick their own time, so the
-  agent still never names days or times itself.
+- **The calendar link.** `MEETING_LINK` (`/schedule`, which redirects to the
+  booking tool set as `BOOKING_URL` in `app/pages/explainers.py`). When wrapping
+  up with an interested homeowner or a wholesaler whose deal fits, the last
+  message ends with the calendar reply too, but not for out-of-state
+  properties, deals outside the buy box, or anyone upset or opted out. It's
+  the only link the agent may share.
 - **Structured output.** Every reply comes back with the message, the intent
   (homeowner or wholesaler), whether to submit the lead, whether to hand off,
   whether they asked to stop, the details they gave, and a short factual
@@ -548,7 +559,7 @@ above — the commenter's ID becomes a normal `psid`, no separate logic needed.
 
 The public reply only says we cover Florida and points them to their messages;
 an address or contact details are only ever asked for privately. The DM
-introduces the virtual assistant and asks what city or ZIP the property is in.
+greets them by first name (never a business name) and asks what city or ZIP the property is in.
 Someone who opted out is never DMed again, whatever they comment.
 
 Needs `pages_manage_engagement` in addition to `pages_messaging`, and the
