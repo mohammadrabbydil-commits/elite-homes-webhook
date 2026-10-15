@@ -999,3 +999,116 @@ def test_fallback_and_comment_copy_never_uses_a_dash():
     assert texts
     for text in texts:
         assert not re.search(r"[‒-―−﹘﹣－]|\s-\s", text), text
+
+
+# --- Memory across database resets (history restored from Facebook) ----------
+
+
+def _past(mid, text, from_page, day, hour=12):
+    from datetime import datetime
+
+    from app.messenger.api import PastMessage
+
+    return PastMessage(mid=mid, text=text, from_page=from_page, created_at=datetime(2026, 10, day, hour))
+
+
+def test_returning_person_gets_their_history_restored_from_facebook(db_session, monkeypatch):
+    """The database was reset, but Facebook still has the conversation, so the
+    agent sees their name from days ago and knows it already introduced itself."""
+    _enable_ai_agent(monkeypatch)
+    facebook_history = [
+        _past("fb_1", "Hi, I want to sell my house in Tampa", False, 12, 10),
+        _past("fb_2", "Hi! I'm Elite Homes USA Group's virtual assistant. What's your name?", True, 12, 11),
+        _past("fb_3", "My name is Dana", False, 12, 12),
+        _past("mid_today", "Do you remember me?", False, 15),  # the message being handled now
+    ]
+    monkeypatch.setattr("app.messenger.responder.get_conversation_history", lambda psid: facebook_history)
+
+    stack, _ = _patched_send([SendResult(success=True, message_id="m_1")])
+    with stack, patch("app.messenger.ai_agent.generate_reply") as mock_agent:
+        mock_agent.return_value = AgentReply(success=True, text="Of course, Dana! How can I help?", handoff=False)
+        handle_inbound_message("psid_1", "Do you remember me?", mid="mid_today", sleep=False)
+
+    history_arg, message_arg = mock_agent.call_args.args
+    assert message_arg == "Do you remember me?"
+    assert [(m.direction, m.text) for m in history_arg] == [
+        (MessageDirection.INBOUND, "Hi, I want to sell my house in Tampa"),
+        (MessageDirection.OUTBOUND, "Hi! I'm Elite Homes USA Group's virtual assistant. What's your name?"),
+        (MessageDirection.INBOUND, "My name is Dana"),
+    ]
+
+    stored = db_session.scalars(select(Message).order_by(Message.timestamp)).all()
+    assert [m.mid for m in stored][:3] == ["fb_1", "fb_2", "fb_3"]
+    assert sum(1 for m in stored if m.mid == "mid_today") == 1  # stored once, as the live message
+
+
+def test_restored_history_is_not_fetched_again_once_the_database_has_it(db_session, monkeypatch):
+    _enable_ai_agent(monkeypatch)
+    calls = []
+
+    def history(psid):
+        calls.append(psid)
+        return [_past("fb_1", "My name is Dana", False, 12)]
+
+    monkeypatch.setattr("app.messenger.responder.get_conversation_history", history)
+    stack, _ = _patched_send(
+        [SendResult(success=True, message_id="m_1"), SendResult(success=True, message_id="m_2")]
+    )
+    with stack, patch("app.messenger.ai_agent.generate_reply") as mock_agent:
+        mock_agent.side_effect = [
+            AgentReply(success=True, text="Hi Dana! Where's the property?", handoff=False),
+            AgentReply(success=True, text="Thanks! What shape is it in?", handoff=False),
+        ]
+        handle_inbound_message("psid_1", "hello again", mid="mid_1", sleep=False)
+        handle_inbound_message("psid_1", "It's in Tampa", mid="mid_2", sleep=False)
+
+    assert calls == ["psid_1"]
+    assert "My name is Dana" in [m.text for m in mock_agent.call_args_list[1].args[0]]
+
+
+def test_past_stop_request_is_still_honoured_after_a_reset(db_session, enabled):
+    monkeypatch_history = [
+        _past("fb_1", "I have a house in Ocala", False, 12, 10),
+        _past("fb_2", "STOP", False, 12, 11),
+    ]
+    with patch("app.messenger.responder.get_conversation_history", return_value=monkeypatch_history):
+        stack, mock_send = _patched_send([])
+        with stack:
+            plan = handle_inbound_message("psid_1", "hi", mid="mid_1", sleep=False)
+
+    assert plan.should_reply is False
+    mock_send.assert_not_called()
+    convo = _convo(db_session)
+    assert convo.opted_out is True
+    assert convo.status is ConversationStatus.CLOSED
+
+
+def test_messages_already_stored_are_not_duplicated_when_restoring(db_session, enabled):
+    """A comment's private reply is already stored under its Facebook id."""
+    convo = Conversation(psid="psid_1", status=ConversationStatus.AUTO_REPLIED, stage=FlowStage.AWAITING_ADDRESS)
+    db_session.add(convo)
+    db_session.flush()
+    db_session.add(Message(conversation_id=convo.id, mid="fb_dm", direction=MessageDirection.OUTBOUND, text="Thanks for commenting!", is_auto=True))
+    db_session.commit()
+
+    history = [
+        _past("fb_dm", "Thanks for commenting!", True, 14),
+        _past("fb_older", "I commented on your post about selling", False, 13),
+    ]
+    with patch("app.messenger.responder.get_conversation_history", return_value=history):
+        stack, _ = _patched_send([SendResult(success=True, message_id="m_1")])
+        with stack:
+            handle_inbound_message("psid_1", "123 Main St, Tampa", mid="mid_1", sleep=False)
+
+    mids = [m.mid for m in db_session.scalars(select(Message)).all()]
+    assert mids.count("fb_dm") == 1
+    assert "fb_older" in mids
+
+
+def test_no_facebook_history_still_replies_normally(db_session, enabled):
+    stack, mock_send = _patched_send([SendResult(success=True, message_id="m_1")])
+    with stack:
+        plan = handle_inbound_message("psid_1", "SELL now", mid="mid_1", sleep=False)
+
+    assert plan.should_reply is True
+    mock_send.assert_called_once()

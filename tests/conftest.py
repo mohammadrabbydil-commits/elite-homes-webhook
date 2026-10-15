@@ -23,6 +23,13 @@ os.environ.setdefault("FB_PAGE_ACCESS_TOKEN", "test-page-token")
 os.environ.setdefault("FB_PAGE_ID", "123456789")
 
 
+@pytest.fixture(autouse=True)
+def no_facebook_history(monkeypatch):
+    """Nobody has any Messenger history unless a test says otherwise, so no
+    test ever reaches the real Graph API through the memory restore."""
+    monkeypatch.setattr("app.messenger.responder.get_conversation_history", lambda psid: [])
+
+
 @pytest.fixture
 def db_session(tmp_path, monkeypatch):
     """A Session bound to a fresh SQLite file, with app modules rebound to it."""

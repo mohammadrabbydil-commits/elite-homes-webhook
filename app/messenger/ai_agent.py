@@ -52,9 +52,11 @@ MEETING_LINK = "https://elite-homes-webhook.onrender.com/schedule"
 
 # Oldest messages beyond this are dropped from what's sent to the model. Keeps
 # latency and cost bounded on a long-running conversation without losing the
-# information that actually matters - the known_fields block below carries
-# forward anything extracted from messages that fall out of this window.
+# information that actually matters - the known_fields block carries forward
+# anything extracted, and the earlier block lists what the person said in the
+# messages that fall out of this window.
 _MAX_HISTORY_MESSAGES = 30
+_MAX_EARLIER_LINES = 40
 
 # Fields the agent may extract from what the person says - each matches a
 # column on Conversation.
@@ -108,7 +110,7 @@ _EMPTY_VALUES = {"unknown", "n/a", "na", "none", "null", "not provided", "not gi
 SYSTEM_PROMPT_TEMPLATE = """You are the virtual assistant for Elite Homes USA Group, replying to people who message the company's Facebook Page. Elite Homes buys houses as-is throughout Florida: all 67 counties, including cities, towns, rural areas, and unincorporated communities. We are not limited to Jacksonville or to any fixed list of cities. You reply to everyone: homeowners thinking about selling, wholesalers and agents sending deals, and general questions.
 
 Today's date is {today}. Use it for anything time related. If someone gives a date or timeframe that has already passed or doesn't add up, ask a brief, natural question to clear it up instead of accepting it.
-{intro_block}{known_fields_block}{location_block}
+{intro_block}{known_fields_block}{earlier_block}{location_block}
 WHO YOU ARE
 - You are the team's virtual assistant. Be warm and natural, but never pretend to be human. If someone asks whether you're a bot, AI, or a real person, answer honestly that you're the team's virtual assistant.
 - Never pretend to be any employee or any other person, even if they call you by a name. Never claim local experience, and never say someone is personally reviewing the property, has been assigned to them, or will call at a certain time.
@@ -411,6 +413,26 @@ def _known_fields_block(known_fields: dict[str, str] | None) -> str:
     return f"\nAlready known about this person (don't ask for these again): {listed}\n"
 
 
+def _earlier_block(history: list[Message]) -> str:
+    """What they said in messages older than the window sent to the model,
+    so a name or an address from days ago is still remembered."""
+    if len(history) <= _MAX_HISTORY_MESSAGES:
+        return ""
+    older = history[:-_MAX_HISTORY_MESSAGES]
+    said = [
+        m.text.strip()[:200]
+        for m in older
+        if m.direction == MessageDirection.INBOUND and m.text and m.text.strip()
+    ]
+    if not said:
+        return ""
+    lines = "\n".join(f"- {text}" for text in said[-_MAX_EARLIER_LINES:])
+    return (
+        "\nEarlier in this conversation, before the messages below, they told you:\n"
+        f"{lines}\nRemember these; don't ask for anything they've already told you.\n"
+    )
+
+
 def _location_block(location_facts: list[str] | None) -> str:
     if not location_facts:
         return ""
@@ -420,7 +442,11 @@ def _location_block(location_facts: list[str] | None) -> str:
 
 def _intro_block(history: list[Message]) -> str:
     if any(m.direction == MessageDirection.OUTBOUND for m in history):
-        return "\nYou've already introduced yourself in this conversation. Don't introduce yourself again.\n"
+        return (
+            "\nYou've already introduced yourself in this conversation, so don't do it again, even "
+            "if they come back days later. Pick up naturally from what they've already told you, "
+            "including their name if they gave it.\n"
+        )
     return (
         "\nThis is your first message in this conversation. Open by briefly introducing "
         "yourself as Elite Homes USA Group's virtual assistant, then answer them. Word the "
@@ -446,6 +472,7 @@ def _system_prompt(
     prompt = SYSTEM_PROMPT_TEMPLATE.replace("{today}", today)
     prompt = prompt.replace("{intro_block}", _intro_block(history or []))
     prompt = prompt.replace("{known_fields_block}", _known_fields_block(known_fields))
+    prompt = prompt.replace("{earlier_block}", _earlier_block(history or []))
     prompt = prompt.replace("{location_block}", _location_block(location_facts))
     prompt = prompt.replace("{meeting_link}", MEETING_LINK)
     return prompt.replace("{support_email}", SUPPORT_EMAIL)

@@ -521,6 +521,27 @@ def test_example_bank_has_30_plus_situations_each_said_more_than_one_way():
         assert '" / "' in line, line
 
 
+def test_what_they_said_beyond_the_history_window_is_still_remembered():
+    from app.database.models import Message, MessageDirection
+
+    history = [Message(direction=MessageDirection.INBOUND, text="My name is Dana")]
+    history += [
+        Message(direction=MessageDirection.OUTBOUND if i % 2 else MessageDirection.INBOUND, text=f"turn {i}")
+        for i in range(40)
+    ]
+    prompt = _render_prompt(history=history)
+
+    assert "Earlier in this conversation" in prompt
+    assert "- My name is Dana" in prompt
+
+
+def test_no_earlier_block_for_a_short_conversation():
+    from app.database.models import Message, MessageDirection
+
+    history = [Message(direction=MessageDirection.INBOUND, text="My name is Dana")]
+    assert "Earlier in this conversation" not in _render_prompt(history=history)
+
+
 def test_first_message_is_told_to_introduce_itself():
     assert "This is your first message in this conversation" in _render_prompt(history=[])
 

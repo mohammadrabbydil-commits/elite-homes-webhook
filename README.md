@@ -176,7 +176,7 @@ elite-homes-poc/
 │   ├── .env.example
 │   └── message_templates.json
 ├── scripts/evaluate_agent.py  # runs the client's test messages through the live AI agent
-├── tests/                     # 223 tests, Graph API and OpenAI both fully mocked
+├── tests/                     # 258 tests, Graph API and OpenAI both fully mocked
 ├── render.yaml                # Render deployment config (non-secret env defaults)
 └── run.py                     # CLI entry point
 ```
@@ -208,7 +208,7 @@ elite-homes-poc/
 python -m pytest tests/ -q
 ```
 
-223 tests, no network access — the Graph API and the OpenAI API are both fully
+258 tests, no network access — the Graph API and the OpenAI API are both fully
 mocked. They cover the exact Graph API payload we send (endpoint selection,
 `published` flag, `scheduled_publish_time`), error and retry classification,
 insight parsing, all six models with their relationships and cascades, adding
@@ -487,6 +487,22 @@ of silently accepting it.
   Models default to these dashes by habit, so this is enforced in code, not
   just asked for. A hyphen inside an ordinary word (`as-is`,
   `single-family`) and phone numbers are left alone.
+
+### Memory that survives a database reset
+
+Render's free plan wipes the SQLite file on every deploy and every restart
+(including waking from sleep), so on its own the database would forget
+everyone. When a message arrives from someone the database has no messages
+from, `_restore_history_from_facebook` reads their Messenger history from
+Facebook (`get_conversation_history`, up to 200 messages) and stores it before
+replying. The agent then remembers what they said days ago, doesn't introduce
+itself again, and a past "STOP" in that history keeps them opted out. Anything
+they said before the last 30 messages is passed to the model as a short
+"earlier, they told you" list, so a name or address from long ago isn't lost.
+
+Facebook history doesn't include our own records (lead flags, handoff status,
+extracted details), so those still reset with the database until it's on
+persistent storage.
 
 ### Staying accurate over a longer conversation
 

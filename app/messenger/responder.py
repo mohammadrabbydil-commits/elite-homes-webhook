@@ -46,7 +46,12 @@ from app.database.models import (
 )
 from app.messenger import ai_agent
 from app.messenger.ai_agent import EXTRACTABLE_FIELDS
-from app.messenger.api import get_user_profile, send_sender_action, send_text
+from app.messenger.api import (
+    get_conversation_history,
+    get_user_profile,
+    send_sender_action,
+    send_text,
+)
 from app.messenger.florida_zips import describe_mention, find_zip_mentions
 
 logger = logging.getLogger(__name__)
@@ -495,6 +500,43 @@ def plan_reply(
     )
 
 
+def _restore_history_from_facebook(session, conversation: Conversation, current_mid: str | None) -> None:
+    """Fill in a conversation's past messages from Facebook.
+
+    Called when the database has nothing this person has written - a new
+    person, or a returning one whose history was lost when the database was
+    reset (Render's free plan wipes it on every restart). Facebook keeps
+    every conversation, so the agent still remembers what they said days ago,
+    doesn't introduce itself again, and still honours a past stop request.
+    """
+    past = [m for m in get_conversation_history(conversation.psid) if m.mid != current_mid]
+    if not past:
+        return
+
+    already_stored = set(
+        session.scalars(select(Message.mid).where(Message.mid.in_([m.mid for m in past])))
+    )
+    for m in past:
+        if m.mid in already_stored:
+            continue
+        session.add(
+            Message(
+                conversation_id=conversation.id,
+                mid=m.mid,
+                direction=MessageDirection.OUTBOUND if m.from_page else MessageDirection.INBOUND,
+                text=m.text or "[photo or attachment]",
+                is_auto=False,
+                timestamp=m.created_at,
+            )
+        )
+    session.flush()
+
+    if any(not m.from_page and is_opt_out_request(m.text) for m in past):
+        conversation.opted_out = True
+        conversation.status = ConversationStatus.CLOSED
+    logger.info("Restored %d past message(s) for %s from Facebook", len(past), conversation.psid)
+
+
 def _save_lead_details(conversation_id: int, plan: ReplyPlan, psid: str) -> None:
     """Save what this message told us, and record the lead for the team,
     before the reply goes out.
@@ -562,6 +604,17 @@ def handle_inbound_message(
             )
             session.add(conversation)
             session.flush()
+
+        has_their_messages = session.scalar(
+            select(Message.id)
+            .where(
+                Message.conversation_id == conversation.id,
+                Message.direction == MessageDirection.INBOUND,
+            )
+            .limit(1)
+        )
+        if not has_their_messages:
+            _restore_history_from_facebook(session, conversation, mid)
 
         # Prior turns only - fetched before this message is added, so the AI
         # agent (if it runs) sees the same history a human reading the

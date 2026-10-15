@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 import requests
 
@@ -21,6 +22,9 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT = 30
+
+_HISTORY_PAGE_SIZE = 50
+HISTORY_MAX_MESSAGES = 200
 
 
 @dataclass
@@ -146,6 +150,82 @@ def send_text(psid: str, text: str, quick_replies: list[dict] | None = None) -> 
     message_id = data.get("message_id")
     logger.info("Sent message %s to %s", message_id, psid)
     return SendResult(success=True, message_id=message_id)
+
+
+@dataclass(frozen=True)
+class PastMessage:
+    """One message from a person's Messenger history with the Page."""
+
+    mid: str
+    text: str
+    from_page: bool
+    created_at: datetime  # naive UTC, like every other timestamp in the database
+
+
+def _parse_graph_time(value: str | None) -> datetime:
+    try:
+        parsed = datetime.strptime(value or "", "%Y-%m-%dT%H:%M:%S%z")
+    except ValueError:
+        return datetime.now(timezone.utc).replace(tzinfo=None)
+    return parsed.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def get_conversation_history(psid: str, max_messages: int = HISTORY_MAX_MESSAGES) -> list[PastMessage]:
+    """This person's Messenger history with the Page, oldest first, read from
+    Facebook itself.
+
+    Facebook keeps every conversation, so this is what lets the agent
+    remember someone even when its own database has been reset. Returns an
+    empty list on any failure - a missing history must never block a reply.
+    """
+    fields = f"messages.limit({_HISTORY_PAGE_SIZE}){{id,message,from,created_time}}"
+    try:
+        response = requests.get(
+            f"{settings.graph_base_url}/{settings.fb_page_id}/conversations",
+            params={
+                "platform": "messenger",
+                "user_id": psid,
+                "fields": fields,
+                "access_token": settings.fb_page_access_token,
+            },
+            timeout=DEFAULT_TIMEOUT,
+        )
+        data = response.json()
+    except (requests.RequestException, ValueError) as exc:
+        logger.warning("Could not read Messenger history for %s: %s", psid, exc)
+        return []
+    if "error" in data:
+        logger.warning("Messenger history unavailable for %s: %s", psid, data["error"].get("message"))
+        return []
+
+    threads = data.get("data") or []
+    if not threads:
+        return []
+    block = threads[0].get("messages") or {}
+    raw = list(block.get("data") or [])
+    next_url = (block.get("paging") or {}).get("next")
+    while next_url and len(raw) < max_messages:
+        try:
+            page = requests.get(next_url, timeout=DEFAULT_TIMEOUT).json()
+        except (requests.RequestException, ValueError):
+            break
+        if "error" in page:
+            break
+        raw.extend(page.get("data") or [])
+        next_url = (page.get("paging") or {}).get("next")
+
+    history = [
+        PastMessage(
+            mid=m["id"],
+            text=(m.get("message") or "").strip(),
+            from_page=str((m.get("from") or {}).get("id")) == str(settings.fb_page_id),
+            created_at=_parse_graph_time(m.get("created_time")),
+        )
+        for m in raw[:max_messages]
+        if m.get("id")
+    ]
+    history.sort(key=lambda m: m.created_at)
+    return history
 
 
 def get_user_profile(psid: str) -> dict:
