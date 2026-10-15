@@ -612,6 +612,25 @@ def test_later_messages_never_greet_or_introduce_again():
     assert "This is your first message" not in prompt
 
 
+def test_name_is_not_used_again_when_a_recent_reply_already_used_it():
+    from app.database.models import Message, MessageDirection
+
+    history = [
+        Message(direction=MessageDirection.INBOUND, text="hi"),
+        Message(direction=MessageDirection.OUTBOUND, text="Hi Dana! Where's the property?"),
+        Message(direction=MessageDirection.INBOUND, text="Tampa"),
+    ]
+    assert "don't use it in this reply" in _render_prompt(history=history, first_name="Dana")
+
+    history += [
+        Message(direction=MessageDirection.OUTBOUND, text="Got it. What shape is it in?"),
+        Message(direction=MessageDirection.INBOUND, text="needs work"),
+        Message(direction=MessageDirection.OUTBOUND, text="No problem. What timeline are you hoping for?"),
+        Message(direction=MessageDirection.INBOUND, text="soon"),
+    ]
+    assert "you may use it if it feels natural" in _render_prompt(history=history, first_name="Dana")
+
+
 def test_first_name_reaches_the_prompt_sent_to_the_model(with_key):
     with patch("app.messenger.ai_agent.requests.post") as mock_post:
         mock_post.return_value = _openai_response("Hi Dana! How can we help?")

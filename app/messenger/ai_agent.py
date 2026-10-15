@@ -480,7 +480,14 @@ def _greeting_block(history: list[Message], first_name: str | None) -> str:
     first name, a plain "Hi," when we don't, and no greeting or introduction
     once the conversation is under way."""
     if any(m.direction == MessageDirection.OUTBOUND for m in history):
-        name_note = f" Their first name is {first_name}; use it now and then, not in every message." if first_name else ""
+        name_note = ""
+        if first_name:
+            recent = [m.text for m in history if m.direction == MessageDirection.OUTBOUND][-2:]
+            if any(first_name.lower() in text.lower() for text in recent):
+                # Saying their name in every message reads as salesy.
+                name_note = f" You used their name ({first_name}) recently, so don't use it in this reply."
+            else:
+                name_note = f" Their first name is {first_name}; you may use it if it feels natural."
         return (
             "\nYou're already in a conversation with them, so don't greet them again and never "
             "introduce yourself, even if they come back days later. Pick up naturally from what "
