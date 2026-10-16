@@ -54,7 +54,7 @@ MEET_THE_TEAM = Explainer(
     "meet-the-team",
     "Meet The Team",
     "The people behind Elite Homes USA - local, real, and here to help "
-    "Jacksonville homeowners move forward.",
+    "Florida homeowners move forward.",
     "45-60 sec",
 )
 
@@ -75,7 +75,7 @@ HOW_IT_WORKS = Explainer(
 WHERE_WE_BUY = Explainer(
     "where-we-buy",
     "Where We Buy",
-    "Jacksonville and surrounding counties.",
+    "All of Florida, every county.",
     "",
     video_url=None,
 )
@@ -109,7 +109,7 @@ FAQ: list[Explainer] = [
     ),
     Explainer(
         "where-do-you-buy", "Where do you buy?",
-        "Jacksonville, FL and surrounding counties.", "15 sec",
+        "All of Florida, every county.", "15 sec",
     ),
     Explainer(
         "do-i-have-to-accept", "Do I have to accept?",
@@ -340,7 +340,7 @@ async def home_page() -> str:
 
     body = f"""
     <h1>{BRAND_NAME}</h1><div class="rule"></div>
-    <p class="copy">We buy houses in Jacksonville, FL - any condition, cash offer.</p>
+    <p class="copy">We buy houses throughout Florida, in any condition.</p>
     <a class="cta" href="/schedule">Schedule Your Free Assessment <span class="arrow">&rarr;</span></a>
     <h2 style="margin-top:32px;font-size:18px;">Meet The Team</h2>
     {_row([MEET_THE_TEAM])}
