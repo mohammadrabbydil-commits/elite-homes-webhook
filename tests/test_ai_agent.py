@@ -133,6 +133,24 @@ def test_empty_reply_fails_closed(with_key):
     assert result.handoff is True
 
 
+def test_requests_are_set_up_for_the_cached_discount(with_key):
+    with patch("app.messenger.ai_agent.requests.post") as mock_post:
+        mock_post.return_value = _openai_response("ok")
+        ai_agent.generate_reply([], "hi", first_name="Dana", known_fields={"city": "Tampa"})
+        first = mock_post.call_args.kwargs["json"]
+        ai_agent.generate_reply([], "different person", first_name="Marcus")
+        second = mock_post.call_args.kwargs["json"]
+
+    assert first["prompt_cache_key"] == second["prompt_cache_key"]
+    assert first["prompt_cache_retention"] == "24h"
+    # The per-conversation details live in a tail section, so both prompts
+    # share everything before it.
+    a, b = first["messages"][0]["content"], second["messages"][0]["content"]
+    shared = a.split("THIS CONVERSATION")[0]
+    assert shared == b.split("THIS CONVERSATION")[0]
+    assert len(shared) > 0.8 * len(a)
+
+
 def test_conversation_history_is_passed_in_role_order(with_key):
     from app.database.models import Message, MessageDirection
 
