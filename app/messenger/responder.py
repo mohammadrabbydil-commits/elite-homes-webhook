@@ -602,6 +602,9 @@ def plan_reply(
 # this lives in memory.
 _inbound_lock = threading.Lock()
 _inbound_seq: dict[str, int] = {}
+# Message ids being handled right now. The database can't catch a redelivery
+# until the first copy commits, which is several seconds into its AI call.
+_inflight_mids: set[str] = set()
 
 
 def _register_inbound(psid: str) -> int:
@@ -719,9 +722,32 @@ def handle_inbound_message(
     """Process one inbound Messenger message end to end.
 
     Idempotent on `mid`: Facebook redelivers webhook events after any non-200
-    response, and replying twice to the same message is exactly the kind of
-    thing that reads as automated.
+    response (including when Render's free server is slow to wake up), and
+    replying twice to the same message is exactly the kind of thing that
+    reads as automated. A copy arriving while the first is still being
+    handled is dropped here, before it can disturb the first one's reply.
     """
+    if mid:
+        with _inbound_lock:
+            if mid in _inflight_mids:
+                logger.info("Message %s is already being handled, ignoring redelivery", mid)
+                return ReplyPlan(False, reason="duplicate webhook delivery")
+            _inflight_mids.add(mid)
+    try:
+        return _handle_inbound_message(psid, text, mid, sleep, quick_reply_payload)
+    finally:
+        if mid:
+            with _inbound_lock:
+                _inflight_mids.discard(mid)
+
+
+def _handle_inbound_message(
+    psid: str,
+    text: str,
+    mid: str | None,
+    sleep: bool,
+    quick_reply_payload: str | None,
+) -> ReplyPlan:
     received_at = time.monotonic()
 
     with session_scope() as session:

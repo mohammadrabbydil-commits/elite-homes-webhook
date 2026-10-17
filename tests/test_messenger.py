@@ -1381,3 +1381,52 @@ def test_scripted_closing_uses_the_companys_closing_line():
     assert MEETING_LINK in flow["closing_message"]
     assert flow["closing_message_partner"].endswith(CLOSING_LINE)
     assert MEETING_LINK not in flow["closing_message_partner"]
+
+
+def test_redelivery_while_the_first_copy_is_still_being_processed_gets_exactly_one_reply(db_session, monkeypatch):
+    """Render's free server can take 30+ seconds to wake up, so Facebook
+    re-sends the message. The copy arrives during the first copy's AI call,
+    before the database has the message. The client's reply went missing
+    when this happened: the copy cancelled the first reply and was then
+    rejected itself."""
+    _enable_ai_agent(monkeypatch)
+    duplicates = []
+
+    def agent_call_during_which_facebook_resends(*args, **kwargs):
+        duplicates.append(handle_inbound_message("psid_1", "How can I schedule an assessment?", mid="mid_1", sleep=False))
+        return AgentReply(success=True, text="Absolutely. Here you go.", handoff=False)
+
+    stack, mock_send = _patched_send([SendResult(success=True, message_id="m_1")])
+    with stack, patch("app.messenger.ai_agent.generate_reply", side_effect=agent_call_during_which_facebook_resends):
+        plan = handle_inbound_message("psid_1", "How can I schedule an assessment?", mid="mid_1", sleep=False)
+
+    assert [d.reason for d in duplicates] == ["duplicate webhook delivery"]
+    assert plan.should_reply is True
+    mock_send.assert_called_once()
+    assert mock_send.call_args.args[1] == "Absolutely. Here you go."
+
+
+def test_a_handled_message_can_be_redelivered_later_without_a_second_reply(db_session, monkeypatch):
+    _enable_ai_agent(monkeypatch)
+    stack, mock_send = _patched_send([SendResult(success=True, message_id="m_1")])
+    with stack, patch("app.messenger.ai_agent.generate_reply") as mock_agent:
+        mock_agent.return_value = AgentReply(success=True, text="Where's the property?", handoff=False)
+        handle_inbound_message("psid_1", "hi", mid="mid_1", sleep=False)
+        again = handle_inbound_message("psid_1", "hi", mid="mid_1", sleep=False)
+
+    assert again.reason == "duplicate webhook delivery"
+    mock_send.assert_called_once()
+
+
+def test_a_message_that_crashes_does_not_block_its_own_retry(db_session, monkeypatch):
+    """The in-flight marker is always released, so a retry after a failure is
+    processed instead of being ignored forever."""
+    _enable_ai_agent(monkeypatch)
+    stack, mock_send = _patched_send([SendResult(success=True, message_id="m_1")])
+    with stack, patch("app.messenger.ai_agent.generate_reply") as mock_agent:
+        mock_agent.side_effect = [RuntimeError("boom"), AgentReply(success=True, text="Hi!", handoff=False)]
+        with pytest.raises(RuntimeError):
+            handle_inbound_message("psid_1", "hi", mid="mid_1", sleep=False)
+        plan = handle_inbound_message("psid_1", "hi", mid="mid_1", sleep=False)
+
+    assert plan.should_reply is True
