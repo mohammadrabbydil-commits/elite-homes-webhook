@@ -26,6 +26,7 @@ import json
 import logging
 import random
 import re
+import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -45,10 +46,12 @@ from app.database.models import (
     utcnow,
 )
 from app.messenger import ai_agent
-from app.messenger.ai_agent import EXTRACTABLE_FIELDS
+from app.messenger.ai_agent import CLOSING_LINE, EXTRACTABLE_FIELDS, MEETING_LINK
 from app.messenger.api import (
+    SendResult,
     get_conversation_history,
     get_user_profile,
+    send_link_button,
     send_sender_action,
     send_text,
 )
@@ -348,7 +351,10 @@ def _fallback_scheduling_plan(
 ) -> ReplyPlan | None:
     """When the AI agent is unavailable, a scheduling request or a price
     question still gets the client's calendar reply instead of being taken
-    as the answer to the scripted flow's next question."""
+    as the answer to the scripted flow's next question. A wholesaler holds
+    the property, so they never get the calendar."""
+    if intent is Intent.PARTNER:
+        return None
     if _PRICE_QUESTION.search(text):
         reply = ai_agent.FALLBACK_REPLY
     elif _SCHEDULING_REQUEST.search(text):
@@ -401,6 +407,7 @@ def _ai_plan(
         known_fields=_known_fields(conversation),
         location_facts=[describe_mention(m) for m in mentions] or None,
         first_name=_greeting_name(conversation),
+        intent_hint=fallback_intent.value if fallback_intent in (Intent.SELL, Intent.PARTNER) else None,
     )
     if not result.success:
         logger.warning("AI agent unavailable (%s), falling back to the scripted flow", result.error)
@@ -475,9 +482,10 @@ def _advance_flow(
     following = _next_stage(stage)
 
     if following is FlowStage.COMPLETE:
+        closing_key = "closing_message_partner" if conversation.intent is Intent.PARTNER else "closing_message"
         return ReplyPlan(
             should_reply=True,
-            text=flow_cfg.get("closing_message", "Thank you! Our team will review this and get back to you."),
+            text=flow_cfg.get(closing_key, f"Thank you! Our team will review this and get back to you. {CLOSING_LINE}"),
             delay_seconds=compute_delay(),
             intent=conversation.intent,
             handoff=True,
@@ -587,6 +595,48 @@ def plan_reply(
     )
 
 
+# Newest-message-wins. When someone sends a second message while a reply to
+# their first is still waiting out its human-like delay, the first reply is
+# dropped and the second answers both - otherwise they get two replies in a
+# row, often asking the same thing. The webhook runs in a single process, so
+# this lives in memory.
+_inbound_lock = threading.Lock()
+_inbound_seq: dict[str, int] = {}
+
+
+def _register_inbound(psid: str) -> int:
+    with _inbound_lock:
+        _inbound_seq[psid] = _inbound_seq.get(psid, 0) + 1
+        return _inbound_seq[psid]
+
+
+def _is_superseded(psid: str, seq: int) -> bool:
+    with _inbound_lock:
+        return _inbound_seq.get(psid) != seq
+
+
+def _without_booking_url(text: str) -> str:
+    """The reply with the raw booking address taken out, for sending with a
+    "Book with us" button: "Here is our calendar link: <url> Please pick..."
+    becomes "Here is our calendar link. Please pick..."."""
+    cleaned = re.sub(r"\s*:?\s*" + re.escape(MEETING_LINK) + r"\.?", ".", text)
+    cleaned = re.sub(r"\.{2,}", ".", cleaned)
+    cleaned = re.sub(r"\s+([.,!?])", r"\1", cleaned)
+    return re.sub(r"\s{2,}", " ", cleaned).strip()
+
+
+def _deliver(psid: str, plan: ReplyPlan) -> SendResult:
+    """Send the planned reply. A reply that shares the booking link goes out
+    as text plus a tappable "Book with us" button (no raw address shown);
+    if Facebook refuses the button, the plain text with the link is sent."""
+    if plan.text and MEETING_LINK in plan.text and not plan.quick_replies:
+        result = send_link_button(psid, _without_booking_url(plan.text), MEETING_LINK)
+        if result.success:
+            return result
+        logger.warning("Book button failed for %s (%s), sending plain text", psid, result.error)
+    return send_text(psid, plan.text, quick_replies=plan.quick_replies)
+
+
 def _restore_history_from_facebook(session, conversation: Conversation, current_mid: str | None) -> None:
     """Fill in a conversation's past messages from Facebook.
 
@@ -654,6 +704,11 @@ def _save_lead_details(conversation_id: int, plan: ReplyPlan, psid: str) -> None
             plan.new_stage = FlowStage.COMPLETE
 
 
+def _superseded(psid: str, plan: ReplyPlan) -> ReplyPlan:
+    logger.info("Dropping the reply to %s: a newer message arrived, which will answer both", psid)
+    return ReplyPlan(False, intent=plan.intent, reason="superseded by a newer message")
+
+
 def handle_inbound_message(
     psid: str,
     text: str,
@@ -673,6 +728,8 @@ def handle_inbound_message(
         if mid and session.scalar(select(Message).where(Message.mid == mid).limit(1)):
             logger.info("Message %s already handled, ignoring redelivery", mid)
             return ReplyPlan(False, reason="duplicate webhook delivery")
+
+        seq = _register_inbound(psid)
 
         conversation = session.scalar(
             select(Conversation).where(Conversation.psid == psid).limit(1)
@@ -760,6 +817,8 @@ def handle_inbound_message(
         # is its own tell.
         typing_lead = min(remaining, 6.0)
         time.sleep(max(0.0, remaining - typing_lead))
+        if _is_superseded(psid, seq):
+            return _superseded(psid, plan)
         send_sender_action(psid, "mark_seen")
         send_sender_action(psid, "typing_on")
         time.sleep(typing_lead)
@@ -767,7 +826,10 @@ def handle_inbound_message(
         send_sender_action(psid, "mark_seen")
         send_sender_action(psid, "typing_on")
 
-    result = send_text(psid, plan.text, quick_replies=plan.quick_replies)
+    if _is_superseded(psid, seq):
+        return _superseded(psid, plan)
+
+    result = _deliver(psid, plan)
 
     with session_scope() as session:
         conversation = session.get(Conversation, conversation_id)

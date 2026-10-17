@@ -176,7 +176,7 @@ elite-homes-poc/
 │   ├── .env.example
 │   └── message_templates.json
 ├── scripts/evaluate_agent.py  # runs the client's test messages through the live AI agent
-├── tests/                     # 280 tests, Graph API and OpenAI both fully mocked
+├── tests/                     # 316 tests, Graph API and OpenAI both fully mocked
 ├── render.yaml                # Render deployment config (non-secret env defaults)
 └── run.py                     # CLI entry point
 ```
@@ -208,7 +208,7 @@ elite-homes-poc/
 python -m pytest tests/ -q
 ```
 
-280 tests, no network access — the Graph API and the OpenAI API are both fully
+316 tests, no network access — the Graph API and the OpenAI API are both fully
 mocked. They cover the exact Graph API payload we send (endpoint selection,
 `published` flag, `scheduled_publish_time`), error and retry classification,
 insight parsing, all six models with their relationships and cascades, adding
@@ -411,17 +411,41 @@ policy (`BOT_INSTRUCTIONS`, 2026-10-12) and the 35-question response guide
   call or text, and a good time. Approved facts only: as-is, inherited homes,
   tenants in place, no showings, no cost to come take a look. Fees and
   closing speed get the client's exact wording, nothing invented.
-- **Scheduling (client's wording).** Any request to schedule (a walkthrough,
-  visit, meeting, call, appointment, or reschedule) gets: "Thanks for reaching
-  out. Here is our calendar link: [link] Please pick the next date that works
-  best for you. I will have our management reach out to you." On a first
-  message with a known name it opens "Hi Dana, thanks for reaching out." It
-  never asks which days or times work and never says anything is booked.
-  `_ensure_schedule_flow` enforces this in code: any reply with the link gets
-  the two closing sentences word for word, and a reply that asks "what days
-  and times" has that question swapped for the calendar flow.
+- **Scheduling: two different situations.**
+  - A **homeowner** who wants a free property assessment, visit, walkthrough,
+    meeting, call, or to reschedule (or asks what we'd pay) gets: "Thanks for
+    reaching out. Here is our calendar link: [link] Please pick the next date
+    that works best for you. I will have our management reach out to you." On
+    a first message with a known name it opens "Hi Dana, thanks for reaching
+    out." It never asks which days or times work and never says anything is
+    booked. `_ensure_schedule_flow` enforces this in code.
+  - A **wholesaler or anyone with a deal** holds the property, so they are
+    never sent the calendar (`_calendar_removed_for_partner` strips it even if
+    the model writes it). If they ask when we want to walk it, the bot asks
+    what availability they have. When they give a date and time it says "Let
+    me speak with my team and confirm if that date and time works. I will have
+    someone from my team reach out to you." The conversation's type so far is
+    passed to the model (`intent_hint`) so a short "when do you want to walk
+    it" is read in context.
+- **"Book with us" button.** Messenger can't label a link in plain text, so a
+  reply that shares the calendar goes out as text plus a tappable **Book with
+  us** button (`send_link_button`) and the raw `elite-homes-webhook...` address
+  isn't shown. If Facebook refuses the button, the plain text with the link is
+  sent instead.
 - **Price, offer, or value.** We'd need to walk through and assess the property
-  before giving a number, followed by the same calendar reply.
+  before giving a number, then the homeowner calendar reply.
+- **Services.** When asked what we do, the bot shares the client's four
+  services as written: Inherited / Probate Homes, Landlord Relief, Foreclosure
+  Help, Free Property Assessment. (The Facebook Page's own Services tab can't
+  be set through the API and is edited by hand.)
+- **How every conversation closes.** When the bot wraps up and hands over, the
+  last sentence is always "Let me earn your business and let me go to work for
+  you." (`CLOSING_LINE`, added in code if the model leaves it out). Never in
+  the middle of a chat, and never for someone who asked us to stop.
+- **One reply per burst of messages.** If someone sends a second message while
+  a reply is still waiting out its delay, the first reply is dropped and the
+  second answers both (`_register_inbound` / `_is_superseded`). Before this,
+  two quick messages produced two replies in a row, which read as a duplicate.
 - **Wholesalers.** Checks deals against the buy box (single-family, 1,000 sq ft
   minimum, city sewer only, anywhere in Florida), asks for whatever's missing
   of septic or sewer, square footage, name, LLC, email, phone, and photos or a
@@ -429,11 +453,10 @@ policy (`BOT_INSTRUCTIONS`, 2026-10-12) and the 35-question response guide
   get a thank-you and a request for ones that fit. Deal sheets go to
   `Ellis@elitehomes1.com`.
 - **The calendar link.** `MEETING_LINK` (`/schedule`, which redirects to the
-  booking tool set as `BOOKING_URL` in `app/pages/explainers.py`). When wrapping
-  up with an interested homeowner or a wholesaler whose deal fits, the last
-  message ends with the calendar reply too, but not for out-of-state
-  properties, deals outside the buy box, or anyone upset or opted out. It's
-  the only link the agent may share.
+  booking tool set as `BOOKING_URL` in `app/pages/explainers.py`). Only for
+  homeowners, and the only link the agent may share. When wrapping up with an
+  interested homeowner the last message includes it, but not for out-of-state
+  properties, deals outside the buy box, or anyone upset or opted out.
 - **Structured output.** Every reply comes back with the message, the intent
   (homeowner or wholesaler), whether to submit the lead, whether to hand off,
   whether they asked to stop, the details they gave, and a short factual

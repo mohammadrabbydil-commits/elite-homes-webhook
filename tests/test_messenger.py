@@ -1198,3 +1198,186 @@ def test_fallback_price_question_is_not_saved_as_the_address(db_session, enabled
     convo = _convo(db_session)
     assert convo.property_address is None
     assert convo.stage is FlowStage.AWAITING_ADDRESS
+
+
+# --- Client round 3: Book with us button, no double replies -------------------
+
+
+def test_booking_url_is_removed_from_the_text_sent_with_the_button():
+    from app.messenger.ai_agent import MEETING_LINK, SCHEDULE_REPLY
+    from app.messenger.responder import _without_booking_url
+
+    text = _without_booking_url(SCHEDULE_REPLY)
+    assert text == (
+        "Thanks for reaching out. Here is our calendar link. "
+        "Please pick the next date that works best for you. "
+        "I will have our management reach out to you."
+    )
+    assert MEETING_LINK not in text and "onrender" not in text and "elite-homes" not in text
+    assert _without_booking_url(f"Book here: {MEETING_LINK}.") == "Book here."
+    assert _without_booking_url("No link in this one.") == "No link in this one."
+
+
+def test_calendar_reply_goes_out_as_a_book_with_us_button(db_session, monkeypatch):
+    from app.messenger.ai_agent import MEETING_LINK, SCHEDULE_REPLY
+
+    _enable_ai_agent(monkeypatch)
+    button_calls = []
+
+    def fake_button(psid, text, url, title="Book with us"):
+        button_calls.append((psid, text, url, title))
+        return SendResult(success=True, message_id="m_button")
+
+    monkeypatch.setattr("app.messenger.responder.send_link_button", fake_button)
+    stack, mock_send = _patched_send([])
+    with stack, patch("app.messenger.ai_agent.generate_reply") as mock_agent:
+        mock_agent.return_value = AgentReply(success=True, text=SCHEDULE_REPLY, handoff=False, intent="sell")
+        handle_inbound_message("psid_1", "Can I get a free assessment?", mid="mid_1", sleep=False)
+
+    mock_send.assert_not_called()
+    ((psid, text, url, title),) = button_calls
+    assert (psid, url, title) == ("psid_1", MEETING_LINK, "Book with us")
+    assert "onrender" not in text
+    # The stored message keeps the link, so the agent remembers it sent it.
+    stored = db_session.scalars(select(Message).where(Message.direction == MessageDirection.OUTBOUND)).all()
+    assert MEETING_LINK in stored[0].text
+
+
+def test_plain_text_with_the_link_is_sent_if_facebook_refuses_the_button(db_session, monkeypatch):
+    from app.messenger.ai_agent import MEETING_LINK, SCHEDULE_REPLY
+
+    _enable_ai_agent(monkeypatch)
+    monkeypatch.setattr(
+        "app.messenger.responder.send_link_button",
+        lambda *a, **k: SendResult(success=False, error="template rejected"),
+    )
+    stack, mock_send = _patched_send([SendResult(success=True, message_id="m_1")])
+    with stack, patch("app.messenger.ai_agent.generate_reply") as mock_agent:
+        mock_agent.return_value = AgentReply(success=True, text=SCHEDULE_REPLY, handoff=False, intent="sell")
+        handle_inbound_message("psid_1", "Can I get a free assessment?", mid="mid_1", sleep=False)
+
+    assert MEETING_LINK in mock_send.call_args.args[1]
+
+
+def test_replies_without_the_link_are_plain_text(db_session, monkeypatch):
+    _enable_ai_agent(monkeypatch)
+    calls = []
+    monkeypatch.setattr(
+        "app.messenger.responder.send_link_button",
+        lambda *a, **k: calls.append(a) or SendResult(success=True, message_id="x"),
+    )
+    stack, mock_send = _patched_send([SendResult(success=True, message_id="m_1")])
+    with stack, patch("app.messenger.ai_agent.generate_reply") as mock_agent:
+        mock_agent.return_value = AgentReply(success=True, text="What city is it in?", handoff=False)
+        handle_inbound_message("psid_1", "hi", mid="mid_1", sleep=False)
+
+    assert calls == []
+    mock_send.assert_called_once()
+
+
+def test_second_message_during_the_delay_replaces_the_first_reply(db_session, monkeypatch):
+    """The client stopped replying and got two bot messages in a row: each of
+    two quick messages had its own reply waiting out the delay. Now only the
+    newest message is answered, and it sees both."""
+    _enable_ai_agent(monkeypatch)
+    sleeping = {"first": True}
+
+    def sleep_then_new_message_arrives(seconds):
+        if sleeping["first"]:
+            sleeping["first"] = False
+            handle_inbound_message("psid_1", "You can check zillow", mid="mid_2", sleep=True)
+
+    stack, mock_send = _patched_send([SendResult(success=True, message_id="m_1")])
+    with stack, \
+         patch("app.messenger.responder.time.sleep", side_effect=sleep_then_new_message_arrives), \
+         patch("app.messenger.ai_agent.generate_reply") as mock_agent:
+        mock_agent.side_effect = [
+            AgentReply(success=True, text="Please send the square footage.", handoff=False),
+            AgentReply(success=True, text="No problem, the team can look it up.", handoff=False),
+        ]
+        first_plan = handle_inbound_message("psid_1", "123 Main St, vacant", mid="mid_1", sleep=True)
+
+    assert first_plan.should_reply is False
+    assert first_plan.reason == "superseded by a newer message"
+    mock_send.assert_called_once()
+    assert mock_send.call_args.args[1] == "No problem, the team can look it up."
+    # The newest reply was written knowing the earlier message too.
+    history_texts = [m.text for m in mock_agent.call_args_list[1].args[0]]
+    assert "123 Main St, vacant" in history_texts
+
+
+def test_messages_a_full_turn_apart_each_get_their_own_reply(db_session, monkeypatch):
+    _enable_ai_agent(monkeypatch)
+    stack, mock_send = _patched_send(
+        [SendResult(success=True, message_id="m_1"), SendResult(success=True, message_id="m_2")]
+    )
+    with stack, patch("app.messenger.ai_agent.generate_reply") as mock_agent:
+        mock_agent.side_effect = [
+            AgentReply(success=True, text="What city is it in?", handoff=False),
+            AgentReply(success=True, text="What shape is it in?", handoff=False),
+        ]
+        handle_inbound_message("psid_1", "hi", mid="mid_1", sleep=False)
+        handle_inbound_message("psid_1", "Tampa", mid="mid_2", sleep=False)
+
+    assert mock_send.call_count == 2
+
+
+def test_redelivery_of_the_same_message_does_not_cancel_the_reply(db_session, monkeypatch):
+    _enable_ai_agent(monkeypatch)
+    state = {"first": True}
+
+    def sleep_then_redelivery(seconds):
+        if state["first"]:
+            state["first"] = False
+            dup = handle_inbound_message("psid_1", "hello", mid="mid_1", sleep=True)
+            assert dup.reason == "duplicate webhook delivery"
+
+    stack, mock_send = _patched_send([SendResult(success=True, message_id="m_1")])
+    with stack, \
+         patch("app.messenger.responder.time.sleep", side_effect=sleep_then_redelivery), \
+         patch("app.messenger.ai_agent.generate_reply") as mock_agent:
+        mock_agent.return_value = AgentReply(success=True, text="Hi! What city is it in?", handoff=False)
+        plan = handle_inbound_message("psid_1", "hello", mid="mid_1", sleep=True)
+
+    assert plan.should_reply is True
+    mock_send.assert_called_once()
+
+
+def test_the_agent_is_told_a_wholesaler_conversation_is_a_wholesaler_conversation(db_session, monkeypatch):
+    _enable_ai_agent(monkeypatch)
+    db_session.add(Conversation(
+        psid="psid_1", intent=Intent.PARTNER, status=ConversationStatus.AUTO_REPLIED,
+        stage=FlowStage.AWAITING_ADDRESS,
+    ))
+    db_session.commit()
+    stack, _ = _patched_send([SendResult(success=True, message_id="m_1")])
+    with stack, patch("app.messenger.ai_agent.generate_reply") as mock_agent:
+        mock_agent.return_value = AgentReply(success=True, text="What availability do you have?", handoff=False)
+        handle_inbound_message("psid_1", "When do you want to walk it", mid="mid_1", sleep=False)
+
+    assert mock_agent.call_args.kwargs["intent_hint"] == "partner"
+
+
+def test_scripted_fallback_never_sends_a_wholesaler_the_calendar(db_session, enabled):
+    from app.messenger.ai_agent import MEETING_LINK
+
+    db_session.add(Conversation(
+        psid="psid_1", intent=Intent.PARTNER, status=ConversationStatus.AUTO_REPLIED,
+        stage=FlowStage.AWAITING_ADDRESS,
+    ))
+    db_session.commit()
+    stack, _ = _patched_send([SendResult(success=True, message_id="m_1")])
+    with stack:
+        plan = handle_inbound_message("psid_1", "Can we schedule a walkthrough?", mid="mid_1", sleep=False)
+
+    assert MEETING_LINK not in (plan.text or "")
+
+
+def test_scripted_closing_uses_the_companys_closing_line():
+    from app.messenger.ai_agent import CLOSING_LINE, MEETING_LINK
+
+    flow = _load_seller_flow_config()
+    assert flow["closing_message"].endswith(CLOSING_LINE)
+    assert MEETING_LINK in flow["closing_message"]
+    assert flow["closing_message_partner"].endswith(CLOSING_LINE)
+    assert MEETING_LINK not in flow["closing_message_partner"]

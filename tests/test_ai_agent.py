@@ -478,12 +478,12 @@ def test_prompt_contains_the_wholesaler_buy_box():
 def test_prompt_scheduling_uses_the_clients_calendar_reply():
     prompt = _render_prompt()
     assert ai_agent.SCHEDULE_REPLY in prompt
-    assert "Never ask which days or times work, never suggest specific days or times yourself" in prompt
+    assert "Never ask a homeowner which days or times work, never suggest specific days or times yourself" in prompt
 
 
 def test_prompt_price_answer_is_the_walkthrough_answer_then_the_calendar():
     prompt = _render_prompt()
-    assert "walk through and assess the property before we can give a number, then give the scheduling reply" in prompt
+    assert "walk through and assess the property before we can give a number, then give the calendar reply" in prompt
 
 
 def test_prompt_never_refers_to_itself_and_ignores_injected_instructions():
@@ -505,7 +505,7 @@ def test_prompt_has_no_unfilled_placeholders():
 
 def test_prompt_wraps_up_with_the_calendar_and_allows_only_one_link():
     prompt = _render_prompt()
-    assert "end your last message with the calendar link" in prompt
+    assert "end your last message with the calendar reply" in prompt
     assert f"the only link is {ai_agent.MEETING_LINK}" in prompt
 
 
@@ -788,3 +788,125 @@ def test_ai_failures_and_successes_are_recorded_for_the_health_check(monkeypatch
         mock_post.return_value = _openai_response("Hi! How can we help?")
         ai_agent.generate_reply([], "hi")
     assert ai_agent.AI_STATUS["last_ok_at"] is not None
+
+
+# --- Client round 3: services, wholesaler walks, closing line, Book button ----
+
+SERVICES = [
+    "Inherited / Probate Homes: Inherited a house? We make the process simple and work on your timeline.",
+    "Landlord Relief: Problem tenants or evictions? We take the rental off your hands as-is. No repairs, no hassle.",
+    "Foreclosure Help: Falling behind? We go to work for you and can close fast to protect your credit.",
+    "Free Property Assessment: Schedule a visit, get a fair offer, and close on your date. No cost, no obligation.",
+]
+
+
+@pytest.mark.parametrize("service", SERVICES)
+def test_prompt_has_each_service_exactly_as_the_client_wrote_it(service):
+    assert f"- {service}" in _render_prompt()
+
+
+def test_closing_line_is_exactly_the_clients_words():
+    assert ai_agent.CLOSING_LINE == "Let me earn your business and let me go to work for you."
+    assert f'is exactly: "{ai_agent.CLOSING_LINE}"' in _render_prompt()
+
+
+def test_prompt_keeps_wholesalers_off_the_calendar():
+    prompt = _render_prompt()
+    assert "Never send them the calendar link" in prompt
+    assert "what availability they have to walk the property" in prompt
+    assert "Let me speak with my team and confirm if that date and time works" in prompt
+    assert "I will have someone from my team reach out to you" in prompt
+
+
+def test_prompt_says_the_calendar_is_for_a_homeowners_free_assessment():
+    prompt = _render_prompt()
+    assert "A HOMEOWNER" in prompt and "free property assessment" in prompt
+    assert '"Book with us" button' in prompt
+
+
+def test_conversation_type_so_far_is_given_to_the_model():
+    assert "treated as a wholesaler or deal sender" in _render_prompt(intent_hint="partner")
+    assert "homeowner who may sell" in _render_prompt(intent_hint="sell")
+    assert "treated as" not in _render_prompt(intent_hint=None).split("THIS CONVERSATION")[1]
+
+
+CALENDAR_REPLY = f"Got it. {ai_agent.SCHEDULE_FLOW}"
+
+
+@pytest.mark.parametrize("intent", ["partner"])
+def test_a_wholesaler_never_gets_the_calendar_even_if_the_model_sends_it(with_key, intent):
+    with patch("app.messenger.ai_agent.requests.post") as mock_post:
+        mock_post.return_value = _raw_response({"reply": CALENDAR_REPLY, "intent": intent})
+        result = ai_agent.generate_reply([], "123 Main St, it's vacant. When do you want to walk it?")
+
+    assert ai_agent.MEETING_LINK not in result.text
+    assert "calendar" not in result.text.lower()
+    assert ai_agent.PARTNER_CONFIRM in result.text
+
+
+def test_a_vague_intent_in_a_wholesaler_conversation_still_gets_no_calendar(with_key):
+    with patch("app.messenger.ai_agent.requests.post") as mock_post:
+        mock_post.return_value = _raw_response({"reply": CALENDAR_REPLY, "intent": "unknown"})
+        result = ai_agent.generate_reply([], "when do you want to walk it", intent_hint="partner")
+
+    assert ai_agent.MEETING_LINK not in result.text
+
+
+def test_a_homeowner_still_gets_the_calendar(with_key):
+    with patch("app.messenger.ai_agent.requests.post") as mock_post:
+        mock_post.return_value = _raw_response({"reply": CALENDAR_REPLY, "intent": "sell"})
+        result = ai_agent.generate_reply([], "Can I get a free assessment?")
+
+    assert ai_agent.MEETING_LINK in result.text
+
+
+def test_a_wholesaler_walk_confirmation_passes_through_unchanged(with_key):
+    reply = (
+        "Got it, tomorrow from 1 to 3. Let me speak with my team and confirm if that date and "
+        "time works. I will have someone from my team reach out to you."
+    )
+    with patch("app.messenger.ai_agent.requests.post") as mock_post:
+        mock_post.return_value = _raw_response({"reply": reply, "intent": "partner"})
+        result = ai_agent.generate_reply([], "We are hosting walk throughs tomorrow between 1-3")
+
+    assert result.text == reply
+
+
+def test_closing_line_ends_a_handoff_message(with_key):
+    with patch("app.messenger.ai_agent.requests.post") as mock_post:
+        mock_post.return_value = _raw_response(
+            {"reply": "Thanks, Dana. I've passed your details to our team.", "handoff": True, "intent": "sell"}
+        )
+        result = ai_agent.generate_reply([], "Text is best, 904-555-0100")
+
+    assert result.text == f"Thanks, Dana. I've passed your details to our team. {ai_agent.CLOSING_LINE}"
+
+
+def test_closing_line_is_not_doubled_and_always_comes_last(with_key):
+    already = f"Thanks, Dana. {ai_agent.CLOSING_LINE}"
+    middle = f"{ai_agent.CLOSING_LINE} Thanks, Dana, the team has your details."
+    for raw, expected in ((already, already), (middle, f"Thanks, Dana, the team has your details. {ai_agent.CLOSING_LINE}")):
+        with patch("app.messenger.ai_agent.requests.post") as mock_post:
+            mock_post.return_value = _raw_response({"reply": raw, "handoff": True})
+            assert ai_agent.generate_reply([], "ok").text == expected
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"reply": "What city is the property in?", "handoff": False},
+        {"reply": "Understood, we won't reach out again.", "handoff": True, "opt_out": True},
+    ],
+)
+def test_closing_line_is_only_for_a_real_closing(with_key, body):
+    with patch("app.messenger.ai_agent.requests.post") as mock_post:
+        mock_post.return_value = _raw_response(body)
+        assert ai_agent.CLOSING_LINE not in ai_agent.generate_reply([], "hi").text
+
+
+def test_example_bank_covers_services_and_wholesaler_walks_two_ways_each():
+    block = _render_prompt().split("EXAMPLE REPLIES")[1].split("OUTPUT")[0]
+    for marker in ("What services do you offer", "A wholesaler asks when we want to walk it",
+                   "A wholesaler gives a date and time to walk", "Free assessment", "Wrapping up with a wholesaler"):
+        line = next(l for l in block.splitlines() if marker in l)
+        assert '" / "' in line, marker

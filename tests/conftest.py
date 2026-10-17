@@ -30,6 +30,17 @@ def no_facebook_history(monkeypatch):
     monkeypatch.setattr("app.messenger.responder.get_conversation_history", lambda psid: [])
 
 
+@pytest.fixture(autouse=True)
+def no_facebook_button(monkeypatch):
+    """The "Book with us" button send never reaches the real Graph API."""
+    from app.messenger.api import SendResult
+
+    monkeypatch.setattr(
+        "app.messenger.responder.send_link_button",
+        lambda psid, text, url, title="Book with us": SendResult(success=True, message_id="m_button"),
+    )
+
+
 @pytest.fixture
 def db_session(tmp_path, monkeypatch):
     """A Session bound to a fresh SQLite file, with app modules rebound to it."""

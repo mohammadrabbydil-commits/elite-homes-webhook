@@ -176,7 +176,8 @@
         ]
       }
     },
-    "closing_message": "Thank you! Here is our calendar link: https://elite-homes-webhook.onrender.com/schedule Please pick the next date that works best for you. I will have our management reach out to you."
+    "closing_message": "Thank you! Here is our calendar link: https://elite-homes-webhook.onrender.com/schedule Please pick the next date that works best for you. I will have our management reach out to you. Let me earn your business and let me go to work for you.",
+    "closing_message_partner": "Thank you! Let me speak with my team, and I will have someone from my team reach out to you. Let me earn your business and let me go to work for you."
   },
   "comment_reply": {
     "_comment": "A public comment containing one of these keywords gets a public reply plus a private-reply DM to start the Messenger conversation. Requires pages_manage_engagement. Never ask for an address or contact details publicly, never a price or an offer, and no dashes as punctuation.",

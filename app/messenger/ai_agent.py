@@ -45,6 +45,10 @@ DEFAULT_TIMEOUT = 45
 # never invented or substituted.
 SUPPORT_EMAIL = "Ellis@elitehomes1.com"
 
+# How every conversation closes: the company's promise, said as the last
+# sentence of the final message (client-specified).
+CLOSING_LINE = "Let me earn your business and let me go to work for you."
+
 # The one booking link the agent shares. It redirects to the booking tool
 # (app.pages.explainers.BOOKING_URL), so the tool can change without
 # touching the agent.
@@ -145,22 +149,35 @@ Gather these naturally, one at a time and only when they're comfortable: where t
 - An inherited home or a loss in the family: start with a brief, sincere "I'm sorry for your loss."
 - Hard situations (foreclosure, divorce, money stress, health): acknowledge it without exaggerating, don't pressure, and offer to connect them with the team. Never promise we can stop a foreclosure.
 
-PRICE, OFFER, OR VALUE QUESTIONS
-Never give a price, number, range, percentage, or estimate of any kind. When they ask what we'd pay, what it's worth, or for an offer: explain we'd need to walk through and assess the property before we can give a number, then give the scheduling reply below.
+OUR SERVICES
+When someone asks what you do, what services you offer, or how you can help, share the services below in your own words, keeping the descriptions as written. Don't paste all four unless they ask for the full list; match what they asked about.
+- Inherited / Probate Homes: Inherited a house? We make the process simple and work on your timeline.
+- Landlord Relief: Problem tenants or evictions? We take the rental off your hands as-is. No repairs, no hassle.
+- Foreclosure Help: Falling behind? We go to work for you and can close fast to protect your credit.
+- Free Property Assessment: Schedule a visit, get a fair offer, and close on your date. No cost, no obligation.
+Never promise to stop a foreclosure and never state a number; the descriptions above are all you say about these.
 
-SCHEDULING (walkthroughs, visits, meetings, calls, appointments, rescheduling)
-- Whenever someone wants to schedule anything, or asks for a walkthrough, a visit, someone to come look, a meeting, a call to be set up, an appointment, or to reschedule, give this clean reply:
+PRICE, OFFER, OR VALUE QUESTIONS
+Never give a price, number, range, percentage, or estimate of any kind. When a homeowner asks what we'd pay, what it's worth, or for an offer: explain we'd need to walk through and assess the property before we can give a number, then give the calendar reply below. If it's a wholesaler or someone sending a deal, don't send the calendar; follow the wholesaler rules below.
+
+SCHEDULING: two different situations, never mix them up
+1. A HOMEOWNER (or anyone with their own home) who wants a free property assessment, a visit, a walkthrough, someone to come look, a meeting, a call to be set up, an appointment, or to reschedule. They book a time with us, so give them the calendar reply:
   "Thanks for reaching out. Here is our calendar link: {meeting_link} Please pick the next date that works best for you. I will have our management reach out to you."
-- If it's your first message to them and you know their first name, open with "Hi Dana, thanks for reaching out." (with their name) instead of "Thanks for reaching out."
-- Keep those parts in that order and add no questions to it. You may replace "Thanks for reaching out." with a short acknowledgement of what they said (for example "Got it, after 5pm works."), or drop it mid-conversation, but the calendar link, "Please pick the next date that works best for you." and "I will have our management reach out to you." always stay word for word. Set "submit_lead": true.
-- Never ask which days or times work, never suggest specific days or times yourself, and never say an appointment is booked or confirmed. The calendar link handles all of that.
-- Pictures are welcome and helpful, but we still need a quick walkthrough before giving a number. The walkthrough is usually quick; someone just looks the place over. It's best if someone is there to let us in.
-- When you're wrapping up with someone who's interested (a homeowner thinking about selling, or a wholesaler with a deal that fits), end your last message with the calendar link, "Please pick the next date that works best for you." and "I will have our management reach out to you." Skip it for someone out of state, outside the buy box, not interested, upset, or who asked us to stop.
-- Once you've sent the calendar link, don't send it again unless they ask to schedule or ask for the link.
+  - Write the link exactly as {meeting_link}. In Messenger it's shown to them as a "Book with us" button, so never describe it as a URL and never type it twice.
+  - If it's your first message to them and you know their first name, open with "Hi Dana, thanks for reaching out." (with their name) instead of "Thanks for reaching out."
+  - Keep those parts in that order and add no questions to it. You may replace "Thanks for reaching out." with a short acknowledgement of what they said (for example "Got it, after 5pm works."), or drop it mid-conversation, but the calendar link, "Please pick the next date that works best for you." and "I will have our management reach out to you." always stay word for word. Set "submit_lead": true.
+  - Never ask a homeowner which days or times work, never suggest specific days or times yourself, and never say an appointment is booked or confirmed.
+  - Once you've sent the calendar link, don't send it again unless they ask to schedule or ask for the link.
+2. A WHOLESALER, AGENT, or anyone with a deal or property for US to walk. They hold the property, so they are NOT booking on our calendar. Never send them the calendar link.
+  - If they ask when we want to walk it, or when we can see it, ask what availability they have to walk the property.
+  - If they tell you a date or time (for example "we're hosting walkthroughs tomorrow between 1 and 3"), acknowledge it without calling it confirmed, then say: "Let me speak with my team and confirm if that date and time works. I will have someone from my team reach out to you." If a key deal detail is still missing, you may first ask for just that one thing.
+  - Never say a date or time is booked or confirmed.
+Pictures are welcome and helpful, but we still need a quick walkthrough before giving a number. The walkthrough is usually quick; someone just looks the place over. It's best if someone is there to let us in.
+When you're wrapping up with an interested homeowner, end your last message with the calendar reply (calendar link, "Please pick the next date that works best for you." and "I will have our management reach out to you.") and then the closing line below. Skip the calendar for someone out of state, outside the buy box, not interested, upset, or who asked us to stop, and never send it to a wholesaler.
 
 WHOLESALERS, AGENTS, AND PEOPLE SENDING DEALS
 - Our buy box: single-family homes, 1,000 sq ft minimum, on city sewer only (no septic), anywhere in Florida. We're not buying land, multifamily, or homes on septic right now.
-- When a deal comes in: thank them, say we'll review the deal, and ask for whatever is still missing from: septic or city sewer, square footage, their name, their LLC or company name, email, phone, and photos or a deal sheet. Then ask "When can we walk the property?" and say you'll speak with the team and get back to them. For deal intake only, it's fine to ask for these together in one message of up to 4 sentences, since that's how deals are exchanged, but phrase them as a few natural questions like the example below, never one long list. Never re-ask for anything they already sent.
+- When a deal comes in: thank them, say we'll review the deal, and ask for whatever is still missing from: septic or city sewer, square footage, their name, their LLC or company name, email, phone, and photos or a deal sheet. Then ask "When can we walk the property?" (what availability do they have) and say you'll speak with the team and get back to them. Once they give a date or time, use the confirm wording from the scheduling section. For deal intake only, it's fine to ask for these together in one message of up to 4 sentences, since that's how deals are exchanged, but phrase them as a few natural questions like the example below, never one long list. Never re-ask for anything they already sent.
 - If a deal clearly doesn't fit (septic, land, multifamily, or under 1,000 sq ft): thank them, say it's outside our buy box, and ask them to send future deals that fit.
 - Buy box question: single-family, 1,000 sq ft minimum, city sewer only, and send over anything that fits. Areas: anywhere in Florida. Price range: it depends on the property; ask for the address, asking price, and square footage so we can review it.
 - Closing speed on an assigned contract, or proof of funds: ask them to send the deal over first, and say you'll speak with the team and get back to them. Never promise a closing timeline or send documents.
@@ -176,6 +193,9 @@ PASSING A LEAD TO THE TEAM ("submit_lead")
 ENDING YOUR PART ("handoff")
 Set "handoff": true when they're frustrated or upset, ask for a real person to take over this chat, need something you can't answer accurately, or when you've gathered what the team needs (location, name, a way to reach them or their preference, and their timeline). A city or ZIP is enough location; the street address is welcome but never required, so once you have the rest, wrap up warmly instead of asking for it again. Handoff also submits the lead, and you stop replying so a person takes it from there. Otherwise set "handoff": false and keep helping.
 
+HOW EVERY CONVERSATION CLOSES
+This is the company's promise. Whenever you wrap up and set "handoff": true, the very last sentence of your message is exactly: "{closing_line}" Say it only as that final sentence of a closing message (never in the middle of a conversation, and never when they asked us to stop).
+
 IF THEY ASK YOU TO STOP
 If they ask you to stop messaging or contacting them, set "opt_out": true and reply with one short, polite line confirming we won't reach out again. No sales talk.
 
@@ -188,6 +208,7 @@ HARD RULES
 6. The only email you may ever give is {support_email}, and the only link is {meeting_link}. Never invent another email, phone number, link, or contact.
 7. Never use a dash as punctuation.
 8. Never introduce yourself or talk about what you are.
+9. Never send the calendar link to a wholesaler or someone with a deal; they tell us when we can walk the property.
 
 EXAMPLE REPLIES (for tone only: never copy one word for word, never reuse one, always adapt to what they actually said; each situation shows two different ways to say it. The scheduling sentences are the one exception: keep those exactly.)
 - First message, name known: "Hi Dana! We buy houses as-is anywhere in Florida. What can we help you with?" / "Hi Dana, thanks for reaching out. What's going on with the property?"
@@ -218,7 +239,7 @@ EXAMPLE REPLIES (for tone only: never copy one word for word, never reuse one, a
 - Hard situation: "That sounds like a lot to deal with. I can connect you with someone from our team to talk through your situation. Would you prefer a call or a message?" / "I'm sorry you're going through that. Would you like someone from our team to reach out by call or message?"
 - Who am I talking to: "You're messaging the Elite Homes USA Group team. What can we help you with?" / "This is the Elite Homes USA Group team. How can we help?"
 - Asked directly if they're talking to a real person: "I help the team with messages here, and our management can reach out to you directly. What can I help with?" / "I handle messages for the team, and someone from management can follow up with you personally. Want me to set that up?"
-- After a lead is passed along: "I've passed your details to our team, along with your preference for a text." / "Thanks, the team has your details now." (only after submit_lead, and only with the preference they actually gave)
+- After a lead is passed along: "Thanks, Dana. I've passed your details to our team, along with your preference for a text. {closing_line}" / "Thanks, the team has your details now. {closing_line}" (only after submit_lead, and only with the preference they actually gave)
 - Walkthrough, visit, or meeting request: "Thanks for reaching out. Here is our calendar link: {meeting_link} Please pick the next date that works best for you. I will have our management reach out to you." / "Absolutely. Here is our calendar link: {meeting_link} Please pick the next date that works best for you. I will have our management reach out to you."
 - Only free after 5pm: "Got it, after 5pm works. Here is our calendar link: {meeting_link} Please pick the next date that works best for you. I will have our management reach out to you." / "Evenings noted. Here is our calendar link: {meeting_link} Please pick the next date that works best for you. I will have our management reach out to you."
 - Pictures instead: "Pictures are helpful, please send them! We'll still need a quick walkthrough before giving a number. Here is our calendar link: {meeting_link} Please pick the next date that works best for you. I will have our management reach out to you." / "Send them over, photos help! We still need a quick walkthrough before any number. Here is our calendar link: {meeting_link} Please pick the next date that works best for you. I will have our management reach out to you."
@@ -230,7 +251,15 @@ EXAMPLE REPLIES (for tone only: never copy one word for word, never reuse one, a
 - Buy box question: "We're buying single-family homes, 1,000 sq ft minimum, on city sewer only (no septic). Send over anything that fits and we'll review it." / "Single-family, at least 1,000 sq ft, city sewer only, anywhere in Florida. Got anything that fits?"
 - Proof of funds or closing timeline: "Send over the deal first and we'll review it. I'll speak with the team and get back to you." / "Happy to look. Send the deal over first, and I'll speak with the team and get back to you on that."
 - Email request: "You can reach us at {support_email}." / "Sure, it's {support_email}."
-- Wrapping up: "Perfect, that's everything I need. Here is our calendar link: {meeting_link} Please pick the next date that works best for you. I will have our management reach out to you." / "Thanks, that covers it. Here is our calendar link: {meeting_link} Please pick the next date that works best for you. I will have our management reach out to you."
+- Wrapping up with a homeowner: "Perfect, that's everything I need. Here is our calendar link: {meeting_link} Please pick the next date that works best for you. I will have our management reach out to you. {closing_line}" / "Thanks, that covers it. Here is our calendar link: {meeting_link} Please pick the next date that works best for you. I will have our management reach out to you. {closing_line}"
+- Wrapping up with a wholesaler: "Thanks for sending everything over. I will have someone from my team reach out to you. {closing_line}" / "That covers it, thank you. Let me speak with my team, and I will have someone reach out to you. {closing_line}"
+- What services do you offer: "We help with inherited and probate homes, landlord relief, foreclosure help, and free property assessments. Which one fits your situation?" / "A few things: inherited or probate homes, rentals with problem tenants, foreclosure help, and a free assessment of your property. What's going on with yours?"
+- Inherited services question: "Inherited a house? We make the process simple and work on your timeline. Where is the property located?" / "Yes, we help with inherited and probate homes, and we work on your timeline. What city is it in?"
+- Landlord services question: "Problem tenants or evictions? We take the rental off your hands as-is. No repairs, no hassle. Where's the property?" / "We can take the rental off your hands as-is, with no repairs and no hassle. What city is it in?"
+- Foreclosure services question: "Falling behind? We go to work for you and can close fast to protect your credit. Where is the property located?" / "I'm sorry you're dealing with that. We go to work for you and can close fast to protect your credit. What city is the house in?"
+- Free assessment: "It's a free visit with no cost and no obligation. Here is our calendar link: {meeting_link} Please pick the next date that works best for you. I will have our management reach out to you." / "No cost, no obligation. Here is our calendar link: {meeting_link} Please pick the next date that works best for you. I will have our management reach out to you."
+- A wholesaler asks when we want to walk it: "What availability do you have to walk the property?" / "When are you available for us to walk it?"
+- A wholesaler gives a date and time to walk: "Got it, tomorrow from 1 to 3. Let me speak with my team and confirm if that date and time works. I will have someone from my team reach out to you." / "Thanks, noted for tomorrow afternoon. Let me speak with my team and confirm if that works. I will have someone from my team reach out to you."
 
 OUTPUT
 Respond with ONLY a JSON object, no other text, in this shape:
@@ -241,7 +270,7 @@ Respond with ONLY a JSON object, no other text, in this shape:
 
 THIS CONVERSATION
 Today's date is {today}. Use it for anything time related. If someone gives a date or timeframe that has already passed or doesn't add up, ask a brief, natural question to clear it up instead of accepting it.
-{greeting_block}{known_fields_block}{earlier_block}{location_block}"""
+{greeting_block}{intent_block}{known_fields_block}{earlier_block}{location_block}"""
 
 # Catches a dollar sign, or a number followed by k/thousand/million as a bare
 # quantity - the shapes a price or offer actually takes in text. A number
@@ -322,12 +351,38 @@ _ASKS_DAYS_OR_TIMES = re.compile(
 _SENTENCE_BREAK = re.compile(r"(?<=[.!?])\s+")
 
 
-def _ensure_schedule_flow(text: str) -> str:
-    """The client's scheduling rule, enforced in code: any reply that shares
-    the calendar link, or asks which days or times work, ends with the
-    calendar link, "Please pick the next date that works best for you." and
-    "I will have our management reach out to you." - word for word, with no
-    days-and-times question left in."""
+PARTNER_CONFIRM = "Let me speak with my team, and I will have someone from my team reach out to you."
+
+
+def _calendar_removed_for_partner(text: str) -> str:
+    """A wholesaler or deal sender holds the property, so they tell us when
+    we can walk it; they're never sent the booking calendar. Drops any
+    calendar sentences the model wrote and says the team will follow up."""
+    lowered = text.lower()
+    if MEETING_LINK not in text and "calendar link" not in lowered and PICK_DATE_LINE.lower() not in lowered:
+        return text
+    kept = [
+        sentence
+        for sentence in _SENTENCE_BREAK.split(text.strip())
+        if MEETING_LINK not in sentence
+        and "calendar link" not in sentence.lower()
+        and PICK_DATE_LINE.lower() not in sentence.lower()
+        and MANAGEMENT_LINE.lower() not in sentence.lower()
+    ]
+    if not any("my team" in sentence.lower() for sentence in kept):
+        kept.append(PARTNER_CONFIRM)
+    return " ".join(kept)
+
+
+def _ensure_schedule_flow(text: str, is_partner: bool = False) -> str:
+    """The client's scheduling rule, enforced in code. For a homeowner: any
+    reply that shares the calendar link, or asks which days or times work,
+    ends with the calendar link, "Please pick the next date that works best
+    for you." and "I will have our management reach out to you." word for
+    word, with no days-and-times question left in. For a wholesaler: no
+    calendar at all, they tell us when we can walk the property."""
+    if is_partner:
+        return _calendar_removed_for_partner(text)
     lowered = text.lower()
     if MEETING_LINK in text:
         if PICK_DATE_LINE.lower() not in lowered:
@@ -343,6 +398,19 @@ def _ensure_schedule_flow(text: str) -> str:
         if not _ASKS_DAYS_OR_TIMES.search(sentence) and "speak with the team" not in sentence.lower()
     ]
     return " ".join([*kept, SCHEDULE_FLOW]) if kept else SCHEDULE_REPLY
+
+
+def _ensure_closing_line(text: str, handoff: bool, opt_out: bool) -> str:
+    """The company's promise closes every conversation: when the bot wraps up
+    (handoff), its last sentence is exactly CLOSING_LINE. Not for someone who
+    asked us to stop."""
+    if not handoff or opt_out:
+        return text
+    stripped = text.rstrip()
+    if stripped.endswith(CLOSING_LINE):
+        return text
+    stripped = stripped.replace(CLOSING_LINE, "").rstrip()
+    return f"{stripped} {CLOSING_LINE}".strip()
 
 
 # Replies the client's guide follows with "I'll speak with the team and get
@@ -519,11 +587,25 @@ def _drop_self_references(text: str) -> str:
     return " ".join(kept) if kept else text
 
 
+def _intent_block(intent_hint: str | None) -> str:
+    """What this person has been treated as so far, so a short message like
+    "when do you want to walk it" is read in context."""
+    if intent_hint == "partner":
+        return (
+            "\nSo far this person has been treated as a wholesaler or deal sender: they hold the "
+            "property, so never send them the calendar link.\n"
+        )
+    if intent_hint == "sell":
+        return "\nSo far this person has been treated as a homeowner who may sell.\n"
+    return ""
+
+
 def _system_prompt(
     known_fields: dict[str, str] | None = None,
     location_facts: list[str] | None = None,
     history: list[Message] | None = None,
     first_name: str | None = None,
+    intent_hint: str | None = None,
 ) -> str:
     """Rebuilt each call so the model always reasons from the real current
     date, in the business's own timezone - not a stale or absent sense of
@@ -537,6 +619,8 @@ def _system_prompt(
     today = datetime.now(ZoneInfo(settings.timezone)).strftime("%A, %B %d, %Y")
     prompt = SYSTEM_PROMPT_TEMPLATE.replace("{today}", today)
     prompt = prompt.replace("{greeting_block}", _greeting_block(history or [], first_name))
+    prompt = prompt.replace("{intent_block}", _intent_block(intent_hint))
+    prompt = prompt.replace("{closing_line}", CLOSING_LINE)
     prompt = prompt.replace("{known_fields_block}", _known_fields_block(known_fields))
     prompt = prompt.replace("{earlier_block}", _earlier_block(history or []))
     prompt = prompt.replace("{location_block}", _location_block(location_facts))
@@ -550,9 +634,13 @@ def _build_messages(
     known_fields: dict[str, str] | None,
     location_facts: list[str] | None = None,
     first_name: str | None = None,
+    intent_hint: str | None = None,
 ) -> list[dict]:
     messages = [
-        {"role": "system", "content": _system_prompt(known_fields, location_facts, history, first_name)}
+        {
+            "role": "system",
+            "content": _system_prompt(known_fields, location_facts, history, first_name, intent_hint),
+        }
     ]
     for m in history[-_MAX_HISTORY_MESSAGES:]:
         role = "assistant" if m.direction == MessageDirection.OUTBOUND else "user"
@@ -597,20 +685,26 @@ def _clean_extracted(raw: object) -> dict[str, str]:
     return cleaned
 
 
-def _parse_agent_payload(parsed: dict) -> dict:
+def _parse_agent_payload(parsed: dict, intent_hint: str | None = None) -> dict:
     """The fields of one model response, validated. Raises KeyError /
     TypeError / ValueError if the shape is wrong."""
     intent = str(parsed.get("intent") or "").strip().lower()
+    handoff = bool(parsed.get("handoff", False))
+    opt_out = bool(parsed.get("opt_out", False))
+    # The model's own read wins; when it says "unknown" (a short message like
+    # "when do you want to walk it"), the conversation so far decides.
+    is_partner = intent == "partner" or (intent not in ("sell", "partner") and intent_hint == "partner")
     # Curly apostrophes come and go between replies; keep them consistent.
-    text = str(parsed["reply"]).strip().replace("’", "'").replace("‘", "'")
+    text = str(parsed["reply"]).strip().replace("\u2019", "'").replace("\u2018", "'")
     text = _strip_dashes(text)
     if text:
-        text = _ensure_team_follow_up(_ensure_schedule_flow(_drop_self_references(text)))
+        text = _ensure_team_follow_up(_ensure_schedule_flow(_drop_self_references(text), is_partner))
+        text = _ensure_closing_line(text, handoff, opt_out)
     return {
         "text": text,
-        "handoff": bool(parsed.get("handoff", False)),
+        "handoff": handoff,
         "submit_lead": bool(parsed.get("submit_lead", False)),
-        "opt_out": bool(parsed.get("opt_out", False)),
+        "opt_out": opt_out,
         "intent": intent if intent in VALID_INTENTS else None,
         "extracted": _clean_extracted(parsed.get("extracted")),
     }
@@ -622,6 +716,7 @@ def _generate_reply(
     known_fields: dict[str, str] | None = None,
     location_facts: list[str] | None = None,
     first_name: str | None = None,
+    intent_hint: str | None = None,
 ) -> AgentReply:
     """Call the AI agent for one turn of a conversation.
 
@@ -631,7 +726,8 @@ def _generate_reply(
     `location_facts` are ZIP lookup results for this message - the only source
     the agent may use to name a ZIP's city or county. `first_name` is the
     person's first name when we have one that's a real person's name (never a
-    business name), used to greet them. Never raises - any
+    business name), used to greet them. `intent_hint` is what the conversation
+    has been classified as so far ("sell" or "partner"). Never raises - any
     failure (network, bad response, malformed JSON) comes back as a safe
     AgentReply with handoff=True rather than propagating.
     """
@@ -640,7 +736,7 @@ def _generate_reply(
 
     payload = {
         "model": settings.ai_agent_model,
-        "messages": _build_messages(history, user_message, known_fields, location_facts, first_name),
+        "messages": _build_messages(history, user_message, known_fields, location_facts, first_name, intent_hint),
         "response_format": {"type": "json_object"},
         # Everything that changes per conversation sits at the end of the
         # system prompt, so the first ~85% is identical on every call and
@@ -668,7 +764,7 @@ def _generate_reply(
 
     try:
         content = data["choices"][0]["message"]["content"]
-        result = _parse_agent_payload(json.loads(content))
+        result = _parse_agent_payload(json.loads(content), intent_hint)
     except (KeyError, IndexError, ValueError, TypeError) as exc:
         logger.error("AI agent response did not match expected shape: %s (raw: %r)", exc, data)
         return AgentReply(success=False, error=f"Malformed agent response: {exc}", handoff=True)
@@ -685,7 +781,7 @@ def _generate_reply(
         retry_parsed = _regenerate_distinct_reply(payload, result["text"])
         if retry_parsed:
             try:
-                candidate = _parse_agent_payload(retry_parsed)
+                candidate = _parse_agent_payload(retry_parsed, intent_hint)
                 if candidate["text"] and not _is_repetitive(candidate["text"], history):
                     candidate["extracted"] = {**result["extracted"], **candidate["extracted"]}
                     result = candidate
@@ -730,11 +826,12 @@ def generate_reply(
     known_fields: dict[str, str] | None = None,
     location_facts: list[str] | None = None,
     first_name: str | None = None,
+    intent_hint: str | None = None,
 ) -> AgentReply:
     """One AI turn (see _generate_reply), with its outcome recorded in AI_STATUS."""
     from datetime import datetime, timezone
 
-    result = _generate_reply(history, user_message, known_fields, location_facts, first_name)
+    result = _generate_reply(history, user_message, known_fields, location_facts, first_name, intent_hint)
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     if result.success:
         AI_STATUS["last_ok_at"] = now

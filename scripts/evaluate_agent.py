@@ -46,7 +46,7 @@ def lacks(*words):
     return ("doesn't say " + " / ".join(words), lambda r, s: not any(w.lower() in r.text.lower() for w in words))
 
 
-GREETS = ("opens with a greeting or a thank you", lambda r, s: bool(re.match(r"(hi|hey|hello)\b|thanks?\b|got it\b", r.text, re.I)))
+GREETS = ("opens with a greeting or a thank you", lambda r, s: bool(re.match(r"(hi|hey|hello)\b|thanks?\b|got it\b|i'm sorry|we'd need|we need", r.text, re.I)))
 NO_REINTRO = ("doesn't greet them again", lambda r, s: not re.match(r"(hi|hey|hello)\b", r.text, re.I))
 CALENDAR = (
     "gives the client's calendar reply",
@@ -54,6 +54,23 @@ CALENDAR = (
     and ai_agent.PICK_DATE_LINE in r.text
     and ai_agent.MANAGEMENT_LINE in r.text,
 )
+
+
+NO_CALENDAR = (
+    "never sends a wholesaler the calendar",
+    lambda r, s: ai_agent.MEETING_LINK not in r.text and "calendar" not in r.text.lower(),
+)
+CONFIRM_WITH_TEAM = (
+    "says it will confirm with the team and someone will reach out",
+    lambda r, s: "my team" in r.text.lower() and "reach out" in r.text.lower(),
+)
+ASKS_THEIR_AVAILABILITY = (
+    "asks what availability they have",
+    lambda r, s: bool(re.search(r"\b(availab|when (are|can) (you|we)|what (day|time))", r.text, re.I)),
+)
+CLOSES = ("ends with the company's closing line", lambda r, s: r.text.rstrip().endswith(ai_agent.CLOSING_LINE))
+NO_CLOSING_MID_CHAT = ("doesn't use the closing line mid conversation", lambda r, s: ai_agent.CLOSING_LINE not in r.text)
+NOT_A_URL = ("shows the link only once", lambda r, s: r.text.count(ai_agent.MEETING_LINK) <= 1)
 
 
 def greets_by(name):
@@ -102,7 +119,7 @@ def _always_checks(scenario):
 
 
 def first(n, group, message, *checks):
-    return {"id": str(n), "group": group, "message": message, "checks": [GREETS, *checks]}
+    return {"id": str(n), "group": group, "message": message, "checks": list(checks)}
 
 
 SCENARIOS = [
@@ -270,6 +287,77 @@ SCENARIOS = [
         "checks": [greets_by("Dana"), CALENDAR],
         "note": "First message is a scheduling request and we know their name.",
     },
+    # --- Client round 3: wholesalers walking a property, services, closing line ---
+    {
+        "id": "W1", "group": "Wholesaler walks", "intent_hint": "partner",
+        "message": "123 main st. This one is not on septic. Roof is 14 years old. A.C 7 years old. It's vacant. When do you want to walk it",
+        "history": [
+            ("in", "Got a deal for you: 3/2 in Arlington, asking 95k, ARV 180k."),
+            ("out", "Thanks for sending it over, we'll review the deal. Is it on septic or city sewer, and what's the square footage? I'll speak with the team and get back to you."),
+        ],
+        "checks": [NO_CALENDAR, ASKS_THEIR_AVAILABILITY, NO_REINTRO],
+        "note": "The client's first screenshot: the bot wrongly sent the calendar link to a wholesaler.",
+    },
+    {
+        "id": "W2", "group": "Wholesaler walks", "intent_hint": "partner",
+        "message": "We are hosting walk throughs tomorrow between 1-3",
+        "history": [
+            ("in", "Got a deal for you: 3/2 in Arlington, asking 95k, ARV 180k."),
+            ("out", "Thanks for sending it over, we'll review the deal. Is it on septic or city sewer, and what's the square footage? I'll speak with the team and get back to you."),
+        ],
+        "checks": [NO_CALENDAR, CONFIRM_WITH_TEAM, lacks("confirmed", "booked", "see you")],
+        "note": "The client's second screenshot: confirm with the team, someone will reach out.",
+    },
+    {
+        "id": "W3", "group": "Wholesaler walks", "intent_hint": "partner",
+        "message": "You can check zillow for the details of square footage. I think 1200 square feet",
+        "history": [
+            ("in", "Got a deal for you: 3/2 in Arlington, asking 95k, ARV 180k."),
+            ("out", "Thanks for sending it over, we'll review the deal. Is it on septic or city sewer, and what's the square footage? I'll speak with the team and get back to you."),
+        ],
+        "checks": [NO_CALENDAR, lacks("what is the square footage", "what's the square footage")],
+    },
+    {"id": "S1", "group": "Services", "message": "What services do you offer?",
+     "checks": [has("inherited", "probate"), has("landlord", "tenant"), has("foreclosure"), has("assessment")]},
+    {"id": "S2", "group": "Services", "message": "Do you help with foreclosure?",
+     "checks": [has("go to work for you", "close fast", "protect your credit"), lacks("stop the foreclosure", "stop foreclosure", "guarantee")]},
+    {"id": "S3", "group": "Services", "message": "I'm a landlord and my tenants won't leave",
+     "checks": [has("as-is", "off your hands", "no repairs", "no hassle")]},
+    {"id": "S4", "group": "Services", "message": "Tell me about the free assessment",
+     "checks": [has("no cost", "no obligation", "free"), CALENDAR]},
+    {"id": "B1", "group": "Services", "message": "Can I get a free property assessment?", "first_name": "Dana",
+     "checks": [greets_by("Dana"), CALENDAR, NOT_A_URL]},
+    {
+        "id": "C1", "group": "Closing line", "message": "My name is Dana",
+        "history": [
+            ("in", "Hi, I have a house in 32114 I need to sell"),
+            ("out", "Hi! We cover the Daytona Beach area. What shape is the house in?"),
+            ("in", "needs a new roof"), ("out", "No problem, we buy as-is. What timeline are you hoping for?"),
+            ("in", "within 2 months"), ("out", "Got it. Would you prefer the team follow up by call, text, or here on Messenger?"),
+            ("in", "text is best, 904-555-0100"),
+            ("out", "Thanks, texting works. What name should I pass along to the team?"),
+        ],
+        "known": {
+            "zip_code": "32114", "city": "Daytona Beach", "county": "Volusia County",
+            "condition": "needs a new roof", "timeline": "within 2 months",
+            "contact_preference": "text", "phone_number": "904-555-0100",
+        },
+        "intent_hint": "sell",
+        "checks": [CLOSES, SUBMITS, NO_REINTRO],
+        "note": "Wrapping up with a homeowner: ends with the company's closing line.",
+    },
+    {
+        "id": "C2", "group": "Closing line", "message": "That's everything. Name is Mike, LLC is MJ Capital, mike@mjcap.com, 904-555-2233. Photos are on the way, and we can walk it tomorrow between 1 and 3.",
+        "history": [
+            ("in", "Here's one: 5512 Pine St, Jacksonville 32210. SFR, 1,350 sqft, city sewer."),
+            ("out", "Thanks for sending this over, we'll review the deal. Please send your name, LLC, email, phone, and photos or a deal sheet."),
+        ],
+        "known": {"property_address": "5512 Pine St", "city": "Jacksonville", "square_footage": "1,350 sqft", "sewer_type": "city sewer"},
+        "intent_hint": "partner",
+        "checks": [CLOSES, NO_CALENDAR, SUBMITS],
+        "note": "Wrapping up with a wholesaler: the closing line, and no calendar link.",
+    },
+    {"id": "C3", "group": "Closing line", "message": "What city do you buy in?", "checks": [NO_CLOSING_MID_CHAT]},
     # --- Things a client tester is likely to try ---
     {"id": "E1", "group": "Client checks", "message": "Who am I talking to?", "first_name": "Ellis",
      "checks": [lacks("i'm a real person", "i am a real person", "i'm human", "my name is")]},
@@ -302,6 +390,7 @@ def run_scenario(scenario: dict) -> dict:
         scenario["message"],
         known_fields=scenario.get("known"),
         first_name=scenario.get("first_name"),
+        intent_hint=scenario.get("intent_hint"),
         location_facts=facts,
     )
     elapsed = time.monotonic() - started

@@ -228,6 +228,47 @@ def get_conversation_history(psid: str, max_messages: int = HISTORY_MAX_MESSAGES
     return history
 
 
+BOOK_BUTTON_TITLE = "Book with us"
+_BUTTON_TEXT_LIMIT = 640  # Facebook's cap on a button template's text
+
+
+def send_link_button(psid: str, text: str, url: str, title: str = BOOK_BUTTON_TITLE) -> SendResult:
+    """Send a message with one tappable button that opens `url`.
+
+    A plain text message can only show a link as its raw address; a button
+    shows a short label ("Book with us") and hides the address. Falls back to
+    the caller to send plain text if Facebook refuses the template.
+    """
+    if not text or not text.strip():
+        raise ValueError("Message text cannot be empty.")
+
+    ok, data = _post(
+        "messages",
+        {
+            "recipient": {"id": psid},
+            "messaging_type": "RESPONSE",
+            "message": {
+                "attachment": {
+                    "type": "template",
+                    "payload": {
+                        "template_type": "button",
+                        "text": text[:_BUTTON_TEXT_LIMIT],
+                        "buttons": [{"type": "web_url", "url": url, "title": title}],
+                    },
+                }
+            },
+        },
+    )
+    if not ok:
+        err = data.get("error", {})
+        logger.error("Failed to send button message to %s: %s", psid, err.get("message"))
+        return SendResult(success=False, error=err.get("message", "Unknown error"), error_code=err.get("code"))
+
+    message_id = data.get("message_id")
+    logger.info("Sent button message %s to %s", message_id, psid)
+    return SendResult(success=True, message_id=message_id)
+
+
 def get_user_profile(psid: str) -> dict:
     """Fetch the first and last name for a PSID, for personalising replies.
 
