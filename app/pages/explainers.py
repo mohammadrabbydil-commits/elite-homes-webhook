@@ -36,9 +36,10 @@ DEMO_VIDEO_URL = "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/
 
 # Booking link - set once a tool (Calendly recommended) is created. Until
 # then /schedule falls back to a Message Us button.
-# NOTE: this is a 30-min Calendly event; the brief asked for a 15-min slot.
-# Swap the URL below once a 15-min event type is created - no other changes needed.
-BOOKING_URL: str | None = "https://calendly.com/mohammadrabby-dil/30min"
+# The client's own Calendly account (Elite Homes USA Group). The event is 15
+# minutes long even though its link still ends in /30min; switch the URL once
+# they rename the event link to /15min - no other changes needed.
+BOOKING_URL: str | None = "https://calendly.com/elitehomes-usa/30min"
 
 
 @dataclass
