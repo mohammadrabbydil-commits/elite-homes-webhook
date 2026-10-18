@@ -36,8 +36,8 @@ DEMO_VIDEO_URL = "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/
 
 # Booking link - set once a tool (Calendly recommended) is created. Until
 # then /schedule falls back to a Message Us button.
-# The client's own Calendly account (Elite Homes USA Group), 15 minute event.
-BOOKING_URL: str | None = "https://calendly.com/elitehomes-usa/15min"
+# The client's own Calendly account (Elite Homes USA Group), 30 minute event.
+BOOKING_URL: str | None = "https://calendly.com/elitehomes-usa/30min"
 
 
 @dataclass
