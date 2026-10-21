@@ -186,6 +186,67 @@ def create_app() -> FastAPI:
             "ai_agent_status": ai_agent.AI_STATUS,
         }
 
+    @app.get("/followups")
+    def followups_page(key: str, format: str = "html"):
+        """For the team: who has gone quiet for 5+ days, with the follow-up
+        message ready to copy. A person sends it from the Page inbox (Meta
+        doesn't allow a bot to message after 24 hours). Shared-secret key,
+        like the /debug routes."""
+        import html as _html
+
+        from app.messenger.followups import FOLLOW_UP_AFTER_DAYS, HUMAN_WINDOW_DAYS, due_followups
+
+        if key != settings.fb_verify_token:
+            return Response(content="unauthorized", status_code=status.HTTP_403_FORBIDDEN)
+
+        rows = due_followups()
+        if format == "json":
+            return {
+                "count": len(rows),
+                "followups": [
+                    {
+                        "name": f.name,
+                        "days_quiet": f.days_silent,
+                        "days_left_to_message": round(f.days_left, 1),
+                        "can_message": f.can_still_message,
+                        "last_from_us": f.last_page_message,
+                        "suggested_message": f.suggested_message,
+                    }
+                    for f in rows
+                ],
+            }
+
+        inbox = f"https://business.facebook.com/latest/inbox/all?asset_id={settings.fb_page_id}"
+        cards = []
+        for f in rows:
+            if f.can_still_message:
+                tail = (
+                    f"<p class='left'>{f.days_left:.1f} days left to message</p>"
+                    f"<p class='msg' id='m{abs(hash(f.psid))}'>{_html.escape(f.suggested_message)}</p>"
+                    f"<button onclick=\"navigator.clipboard.writeText(document.getElementById('m{abs(hash(f.psid))}').innerText)\">Copy message</button>"
+                )
+            else:
+                tail = "<p class='left closed'>7 day window closed. Wait for them to write again.</p>"
+            cards.append(
+                f"<div class='card'><h3>{_html.escape(f.name)}</h3>"
+                f"<p class='meta'>Quiet for {f.days_silent} days</p>"
+                f"<p class='last'>Our last message: {_html.escape(f.last_page_message)}</p>{tail}</div>"
+            )
+        body = "".join(cards) or f"<p>Nobody is due a follow-up (nothing unanswered for {FOLLOW_UP_AFTER_DAYS}+ days).</p>"
+        page = f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Follow-ups</title><style>
+body{{font-family:Arial,sans-serif;max-width:640px;margin:0 auto;padding:16px;background:#f4f6f9;color:#15213b}}
+h1{{font-size:22px}} .card{{background:#fff;border:1px solid #dce1ea;border-radius:10px;padding:14px;margin:12px 0}}
+h3{{margin:0 0 4px}} .meta,.last,.left{{margin:4px 0;color:#5a6479;font-size:14px}} .left{{color:#2c7a4b;font-weight:bold}}
+.closed{{color:#b3261e}} .msg{{background:#f7f0e1;padding:10px;border-radius:8px;margin:8px 0}}
+button{{background:#13254a;color:#fff;border:0;border-radius:8px;padding:10px 14px;font-size:15px}}
+a{{color:#13254a}}</style></head><body>
+<h1>Follow-ups due</h1>
+<p>People who have gone quiet for {FOLLOW_UP_AFTER_DAYS}+ days. Send each message yourself from the
+<a href="{inbox}">Page inbox</a>; Meta lets a person reply for {HUMAN_WINDOW_DAYS} days after the customer's last message.</p>
+{body}</body></html>"""
+        return Response(content=page, media_type="text/html")
+
     @app.get("/debug/recent")
     def debug_recent(key: str, limit: int = 20) -> dict:
         """Temporary diagnostic: what has actually reached the webhook and

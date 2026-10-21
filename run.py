@@ -485,6 +485,27 @@ def cmd_inbox(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_followups(args: argparse.Namespace) -> int:
+    """List conversations that went quiet for 5+ days and need a follow-up."""
+    from app.messenger.followups import FOLLOW_UP_AFTER_DAYS, HUMAN_WINDOW_DAYS, due_followups
+
+    rows = due_followups()
+    if not rows:
+        print(f"Nobody is due a follow-up (nothing unanswered for {FOLLOW_UP_AFTER_DAYS}+ days).")
+        return 0
+
+    print(f"{len(rows)} conversation(s) due a follow-up. Send each from the Page inbox:")
+    print(f"(Meta lets a person reply for {HUMAN_WINDOW_DAYS} days after the customer's last message.)")
+    print()
+    for f in rows:
+        left = f"{f.days_left:.1f} days left to message" if f.can_still_message else "window CLOSED, wait for them to write"
+        print(f"  {f.name}   quiet {f.days_silent} days   {left}")
+        print(f"    last from us: {f.last_page_message}")
+        if f.can_still_message:
+            print(f"    send:         {f.suggested_message}")
+    return 0
+
+
 def cmd_dashboard(args: argparse.Namespace) -> int:
     target = BASE_DIR / "app" / "dashboard" / "app.py"
     return subprocess.call([sys.executable, "-m", "streamlit", "run", str(target)])
@@ -587,6 +608,7 @@ def build_parser() -> argparse.ArgumentParser:
     webhook.set_defaults(func=cmd_webhook)
 
     sub.add_parser("inbox", help="Show conversations awaiting a human").set_defaults(func=cmd_inbox)
+    sub.add_parser("followups", help="Who has gone quiet for 5+ days and needs a follow-up").set_defaults(func=cmd_followups)
     sub.add_parser("dashboard", help="Launch the dashboard").set_defaults(func=cmd_dashboard)
 
     outreach = sub.add_parser("outreach", help="Run an outreach campaign")

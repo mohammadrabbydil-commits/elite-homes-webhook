@@ -176,7 +176,7 @@ elite-homes-poc/
 │   ├── .env.example
 │   └── message_templates.json
 ├── scripts/evaluate_agent.py  # runs the client's test messages through the live AI agent
-├── tests/                     # 316 tests, Graph API and OpenAI both fully mocked
+├── tests/                     # 335 tests, Graph API and OpenAI both fully mocked
 ├── render.yaml                # Render deployment config (non-secret env defaults)
 └── run.py                     # CLI entry point
 ```
@@ -208,7 +208,7 @@ elite-homes-poc/
 python -m pytest tests/ -q
 ```
 
-316 tests, no network access — the Graph API and the OpenAI API are both fully
+335 tests, no network access — the Graph API and the OpenAI API are both fully
 mocked. They cover the exact Graph API payload we send (endpoint selection,
 `published` flag, `scheduled_publish_time`), error and retry classification,
 insight parsing, all six models with their relationships and cascades, adding
@@ -589,6 +589,38 @@ Needs `pages_manage_engagement` in addition to `pages_messaging`, and the
 Page's webhook subscription must include `feed` (see Messenger setup above).
 Same idempotency and "ignore the Page's own comments" guards as the message
 path.
+
+---
+
+## Follow-ups after 5 days
+
+The client wants "Hi Dejon, we wanted to follow up. Do you have any questions?"
+sent when a conversation stops midway for 5 days. **A bot can't send it.**
+Meta only allows automatic messages within 24 hours of the person's last
+message (Facebook answers "sent outside of allowed window"), and the 7 day
+`HUMAN_AGENT` tag is refused without approval and is meant for a human
+replying. A person on the team can send it from the Page inbox for up to
+7 days after the customer's last message.
+
+`app/messenger/followups.py` finds who is due and prepares the message:
+
+```bash
+python run.py followups
+```
+
+and the team can open `https://<host>/followups?key=<FB_VERIFY_TOKEN>` on a
+phone (add `&format=json` for data). Each person has a Copy message button and
+a count of days left in Meta's window.
+
+- **Due:** our message was the last one, unanswered for 5+ days, they had
+  written at least once, and it isn't closed (our closing line), opted out
+  ("STOP"), or already followed up.
+- **Window closed (7+ days):** listed but marked "wait for them to write".
+- **Name:** their first name when it's a person's name, never a business name.
+- **Source:** Facebook's own conversation history, not our database, because
+  Render's free plan wipes the database on every restart.
+- Nothing is marked "done": once the team sends the message it becomes our last
+  message and the person drops off the list on its own.
 
 ---
 
