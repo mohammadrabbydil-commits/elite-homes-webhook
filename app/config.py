@@ -86,6 +86,10 @@ class Settings:
     autoreply_max_per_conversation: int = field(
         default_factory=lambda: _get_int("AUTOREPLY_MAX_PER_CONVERSATION", 1)
     )
+    # Days of silence before a conversation is listed for a follow-up (client
+    # asked for 2 to 3). Meta lets a person reply for 7 days after the
+    # customer's last message.
+    follow_up_after_days: int = field(default_factory=lambda: _get_int("FOLLOW_UP_AFTER_DAYS", 3))
     business_hours_start: int = field(default_factory=lambda: _get_int("BUSINESS_HOURS_START", 8))
     business_hours_end: int = field(default_factory=lambda: _get_int("BUSINESS_HOURS_END", 20))
 

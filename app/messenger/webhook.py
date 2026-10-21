@@ -188,7 +188,7 @@ def create_app() -> FastAPI:
 
     @app.get("/followups")
     def followups_page(key: str, format: str = "html"):
-        """For the team: who has gone quiet for 5+ days, with the follow-up
+        """For the team: who has gone quiet for a few days, with the follow-up
         message ready to copy. A person sends it from the Page inbox (Meta
         doesn't allow a bot to message after 24 hours). Shared-secret key,
         like the /debug routes."""

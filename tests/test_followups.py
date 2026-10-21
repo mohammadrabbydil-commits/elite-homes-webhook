@@ -39,20 +39,45 @@ def _stalled(days_quiet: float = 5.5, last: str = "What city is the property in?
     ], psid=psid)
 
 
-def test_a_conversation_quiet_for_five_days_is_due_with_the_clients_message():
-    due = _evaluate(_stalled(5.5), NOW)
+def test_the_follow_up_comes_after_three_days_by_default():
+    assert followups.FOLLOW_UP_AFTER_DAYS == settings.follow_up_after_days == 3
+
+
+def test_a_conversation_quiet_for_three_days_is_due_with_the_clients_message():
+    due = _evaluate(_stalled(3.5), NOW)
 
     assert due is not None
     assert due.name == "Dejon Ellis" and due.first_name == "Dejon"
     assert due.suggested_message == "Hi Dejon, we wanted to follow up. Do you have any questions?"
-    assert due.days_silent == 5.5
+    assert due.days_silent == 3.5
     assert due.can_still_message is True
-    assert due.days_left == pytest.approx(1.5)
+    assert due.days_left == pytest.approx(3.5)  # plenty of time inside Meta's 7 days
     assert due.last_page_message == "What city is the property in?"
 
 
-def test_not_due_before_five_days():
-    assert _evaluate(_stalled(4.9), NOW) is None
+def test_not_due_before_three_days():
+    assert _evaluate(_stalled(2.9), NOW) is None
+
+
+def test_the_follow_up_is_only_ever_sent_once_however_the_team_words_it():
+    """Our automatic reply is one message. A second Page message since the
+    customer last wrote means somebody already followed up."""
+    already = _conversation([
+        _msg("Just checking in, any questions about selling?", True, 3.2),   # the team's own wording
+        _msg("What city is the property in?", True, 6.0),                   # our automatic reply
+        _msg("I want to sell my house", False, 6.01),
+    ])
+    assert _evaluate(already, NOW) is None
+
+
+def test_earlier_exchanges_do_not_count_as_a_follow_up():
+    convo = _conversation([
+        _msg("What shape is it in?", True, 3.5),
+        _msg("123 Main St, Tampa", False, 3.6),
+        _msg("Where is the property?", True, 3.7),
+        _msg("I want to sell my house", False, 3.8),
+    ])
+    assert _evaluate(convo, NOW) is not None
 
 
 def test_past_metas_seven_day_window_it_is_listed_but_cannot_be_messaged():

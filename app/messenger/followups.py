@@ -1,7 +1,8 @@
 """Who is due a follow-up: conversations that stopped midway.
 
 The client wants a message like "Hi Dejon, we wanted to follow up. Do you have
-any questions?" when someone goes quiet for 5 days. Meta doesn't allow a bot
+any questions?" sent once when someone goes quiet for 2 to 3 days (3 by
+default, set with FOLLOW_UP_AFTER_DAYS). Meta doesn't allow a bot
 to send that: a Page may only message automatically within 24 hours of the
 person's last message (Facebook rejects it with "sent outside of allowed
 window"), and the 7-day HUMAN_AGENT tag is restricted to a human replying. A
@@ -27,7 +28,7 @@ from app.messenger.responder import OPT_OUT_REPLY, is_opt_out_request, person_fi
 
 logger = logging.getLogger(__name__)
 
-FOLLOW_UP_AFTER_DAYS = 5
+FOLLOW_UP_AFTER_DAYS = settings.follow_up_after_days
 # Meta lets a human reply for 7 days after the person's last message.
 HUMAN_WINDOW_DAYS = 7
 FOLLOW_UP_MARKER = "wanted to follow up"
@@ -100,8 +101,21 @@ def _evaluate(conversation: dict, now: datetime) -> FollowUp | None:
         return None  # their message is the latest: it's our turn, not a follow-up
 
     last_text = (newest.get("message") or "").strip()
-    if CLOSING_LINE in last_text or last_text == OPT_OUT_REPLY or FOLLOW_UP_MARKER in last_text.lower():
-        return None  # closed, stopped on request, or already followed up
+    if CLOSING_LINE in last_text or last_text == OPT_OUT_REPLY:
+        return None  # closed, or stopped on request
+
+    # Everything since the customer last wrote. Our automatic reply is one
+    # message; a second one means somebody already followed up (worded any
+    # way they liked), and a follow-up happens only once.
+    page_messages_since = 0
+    for m in messages:
+        if str((m.get("from") or {}).get("id")) != page_id:
+            break
+        page_messages_since += 1
+        if FOLLOW_UP_MARKER in (m.get("message") or "").lower():
+            return None
+    if page_messages_since > 1:
+        return None
 
     theirs = [
         (m.get("message") or "") for m in messages if str((m.get("from") or {}).get("id")) != page_id
@@ -136,8 +150,8 @@ def _evaluate(conversation: dict, now: datetime) -> FollowUp | None:
 
 
 def due_followups(now: datetime | None = None) -> list[FollowUp]:
-    """Conversations that went quiet for 5+ days with our message unanswered,
-    oldest silence last (the ones about to leave Meta's 7-day window first)."""
+    """Conversations that went quiet for FOLLOW_UP_AFTER_DAYS+ days with our
+    message unanswered, the ones about to leave Meta's 7-day window first."""
     now = now or datetime.now(timezone.utc).replace(tzinfo=None)
     due = [f for c in _conversations() if (f := _evaluate(c, now))]
     return sorted(due, key=lambda f: (not f.can_still_message, f.days_left))

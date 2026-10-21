@@ -486,7 +486,7 @@ def cmd_inbox(args: argparse.Namespace) -> int:
 
 
 def cmd_followups(args: argparse.Namespace) -> int:
-    """List conversations that went quiet for 5+ days and need a follow-up."""
+    """List conversations that went quiet for a few days and need a follow-up."""
     from app.messenger.followups import FOLLOW_UP_AFTER_DAYS, HUMAN_WINDOW_DAYS, due_followups
 
     rows = due_followups()
@@ -608,7 +608,7 @@ def build_parser() -> argparse.ArgumentParser:
     webhook.set_defaults(func=cmd_webhook)
 
     sub.add_parser("inbox", help="Show conversations awaiting a human").set_defaults(func=cmd_inbox)
-    sub.add_parser("followups", help="Who has gone quiet for 5+ days and needs a follow-up").set_defaults(func=cmd_followups)
+    sub.add_parser("followups", help="Who has gone quiet for a few days and needs a follow-up").set_defaults(func=cmd_followups)
     sub.add_parser("dashboard", help="Launch the dashboard").set_defaults(func=cmd_dashboard)
 
     outreach = sub.add_parser("outreach", help="Run an outreach campaign")
