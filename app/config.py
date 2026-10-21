@@ -90,6 +90,11 @@ class Settings:
     # asked for 2 to 3). Meta lets a person reply for 7 days after the
     # customer's last message.
     follow_up_after_days: int = field(default_factory=lambda: _get_int("FOLLOW_UP_AFTER_DAYS", 3))
+    # Automatic follow-up inside Meta's 24 hour window: sent once after this
+    # many hours of silence, by an outside timer calling /run-nudges.
+    nudge_enabled: bool = field(default_factory=lambda: _get("NUDGE_ENABLED", "false").lower() == "true")
+    nudge_after_hours: float = field(default_factory=lambda: float(_get("NUDGE_AFTER_HOURS", "20") or 20))
+    nudge_key: str = field(default_factory=lambda: _get("NUDGE_KEY"))
     business_hours_start: int = field(default_factory=lambda: _get_int("BUSINESS_HOURS_START", 8))
     business_hours_end: int = field(default_factory=lambda: _get_int("BUSINESS_HOURS_END", 20))
 

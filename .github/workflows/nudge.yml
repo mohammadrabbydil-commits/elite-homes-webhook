@@ -1,0 +1,26 @@
+# Calls the bot every 15 minutes so it can send the once-only follow-up to
+# anyone who went quiet for ~20 hours (still inside Meta's 24 hour window).
+# A free Render server sleeps, so it can't run its own timer. It also wakes the
+# server. Needs the repository secret NUDGE_KEY (same value as on Render); with
+# no secret it does nothing.
+name: Follow-up nudges
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+jobs:
+  nudge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ask the bot to send any due follow-ups
+        env:
+          NUDGE_KEY: ${{ secrets.NUDGE_KEY }}
+        run: |
+          if [ -z "$NUDGE_KEY" ]; then
+            echo "NUDGE_KEY secret is not set, nothing to do."
+            exit 0
+          fi
+          curl --fail --silent --show-error --max-time 110 --retry 2 \
+            "https://elite-homes-webhook.onrender.com/run-nudges?key=${NUDGE_KEY}"

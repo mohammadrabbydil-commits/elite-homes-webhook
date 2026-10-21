@@ -118,7 +118,12 @@ def send_sender_action(psid: str, action: str) -> bool:
     return ok
 
 
-def send_text(psid: str, text: str, quick_replies: list[dict] | None = None) -> SendResult:
+def send_text(
+    psid: str,
+    text: str,
+    quick_replies: list[dict] | None = None,
+    messaging_type: str = "RESPONSE",
+) -> SendResult:
     """Send a plain text message to someone who messaged the Page first.
 
     `quick_replies` is Facebook's tappable-button payload: a list of
@@ -135,7 +140,7 @@ def send_text(psid: str, text: str, quick_replies: list[dict] | None = None) -> 
         "messages",
         {
             "recipient": {"id": psid},
-            "messaging_type": "RESPONSE",
+            "messaging_type": messaging_type,
             "message": message,
         },
     )

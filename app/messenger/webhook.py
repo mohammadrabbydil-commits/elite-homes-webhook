@@ -186,6 +186,18 @@ def create_app() -> FastAPI:
             "ai_agent_status": ai_agent.AI_STATUS,
         }
 
+    @app.get("/run-nudges", response_model=None)
+    def run_nudges_route(key: str, dry_run: bool = False):
+        """Called every 15 minutes by an outside timer (a sleeping free server
+        can't run its own): sends the once-only follow-up to anyone who went
+        quiet for NUDGE_AFTER_HOURS and is still inside Meta's 24 hour window.
+        Needs NUDGE_KEY, which is separate from the other shared secrets."""
+        from app.messenger.followups import run_nudges
+
+        if not settings.nudge_key or key != settings.nudge_key:
+            return Response(content="unauthorized", status_code=status.HTTP_403_FORBIDDEN)
+        return run_nudges(dry_run=dry_run)
+
     @app.get("/followups")
     def followups_page(key: str, format: str = "html"):
         """For the team: who has gone quiet for a few days, with the follow-up

@@ -176,7 +176,7 @@ elite-homes-poc/
 │   ├── .env.example
 │   └── message_templates.json
 ├── scripts/evaluate_agent.py  # runs the client's test messages through the live AI agent
-├── tests/                     # 338 tests, Graph API and OpenAI both fully mocked
+├── tests/                     # 353 tests, Graph API and OpenAI both fully mocked
 ├── render.yaml                # Render deployment config (non-secret env defaults)
 └── run.py                     # CLI entry point
 ```
@@ -208,7 +208,7 @@ elite-homes-poc/
 python -m pytest tests/ -q
 ```
 
-338 tests, no network access — the Graph API and the OpenAI API are both fully
+353 tests, no network access — the Graph API and the OpenAI API are both fully
 mocked. They cover the exact Graph API payload we send (endpoint selection,
 `published` flag, `scheduled_publish_time`), error and retry classification,
 insight parsing, all six models with their relationships and cascades, adding
@@ -592,37 +592,50 @@ path.
 
 ---
 
-## Follow-ups after a few days of silence
+## Follow-ups for conversations that stop midway
 
 The client wants "Hi Dejon, we wanted to follow up. Do you have any questions?"
-sent **once** when a conversation stops midway for 2 to 3 days. It's 3 days by
-default; set `FOLLOW_UP_AFTER_DAYS=2` to change it. **A bot can't send it.**
-Meta only allows automatic messages within 24 hours of the person's last
-message (Facebook answers "sent outside of allowed window"), and the 7 day
-`HUMAN_AGENT` tag is refused without approval and is meant for a human
-replying. A person on the team can send it from the Page inbox for up to
-7 days after the customer's last message, so 3 days leaves 4 to act.
+sent **once** when someone goes quiet. Meta's rules decide how it can be sent
+(`app/messenger/followups.py`):
 
-`app/messenger/followups.py` finds who is due and prepares the message:
+**1. Automatic nudge, inside 24 hours (the bot sends it).** Meta lets a Page
+message automatically for 24 hours after the customer's last message. After
+`NUDGE_AFTER_HOURS` (20) of silence, still inside that window, in business
+hours, the bot sends the message once as a Messenger `UPDATE`.
+
+- A free Render server sleeps, so it can't run its own timer. The GitHub
+  workflow `.github/workflows/nudge.yml` calls `/run-nudges?key=<NUDGE_KEY>`
+  every 15 minutes (which also wakes the server). `NUDGE_KEY` is a long random
+  value kept as a Render environment variable **and** a GitHub repository
+  secret. `/run-nudges?key=...&dry_run=true` reports who would be nudged
+  without sending.
+- Off until `NUDGE_ENABLED=true` (and `AUTOREPLY_ENABLED=true`).
+- Safe to run as often as you like: a person who was nudged has a second Page
+  message since they last wrote, so they're skipped. At most 20 per run, one
+  run at a time.
+- Skipped: closed chats (our closing line), "STOP", people who never wrote,
+  and anyone already followed up. The 24 hour limit is counted from the
+  **customer's** last message. Someone who wrote in the early morning may reach
+  the night-time hours before the window ends and miss the nudge; they appear
+  on the team list instead.
+
+**2. Team list, after days (a person sends it).** After 24 hours a bot may not
+message at all (Facebook answers "sent outside of allowed window"; the 7 day
+`HUMAN_AGENT` tag is refused without approval and is meant for a human
+replying). Someone quiet for `FOLLOW_UP_AFTER_DAYS` (3) who wasn't nudged is
+listed for the team to message from the Page inbox, for up to 7 days:
 
 ```bash
 python run.py followups
 ```
 
-and the team can open `https://<host>/followups?key=<FB_VERIFY_TOKEN>` on a
-phone (add `&format=json` for data). Each person has a Copy message button and
-a count of days left in Meta's window.
+or `https://<host>/followups?key=<FB_VERIFY_TOKEN>` on a phone (`&format=json`
+for data), with a Copy message button and the days left in Meta's window.
+People past 7 days are marked "wait for them to write".
 
-- **Due:** our message was the last one, unanswered for 3+ days, they had
-  written at least once, and it isn't closed (our closing line) or opted out
-  ("STOP").
-- **Once only:** our automatic reply is one message, so a second Page message
-  since the customer last wrote means someone already followed up, however it
-  was worded, and they never appear again.
-- **Window closed (7+ days):** listed but marked "wait for them to write".
-- **Name:** their first name when it's a person's name, never a business name.
-- **Source:** Facebook's own conversation history, not our database, because
-  Render's free plan wipes the database on every restart.
+Both read Facebook's own conversation history, not our database (Render's free
+plan wipes it on every restart), and use the person's first name only when it
+is a person's name, never a business name.
 
 ---
 

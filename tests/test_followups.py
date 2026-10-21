@@ -187,3 +187,144 @@ def test_the_team_page_needs_the_key_and_lists_who_is_due(monkeypatch):
     assert "Dejon Ellis" in html and "we wanted to follow up" in html and "Copy message" in html
     data = client.get("/followups", params={"key": settings.fb_verify_token, "format": "json"}).json()
     assert data["count"] == 1 and data["followups"][0]["can_message"] is True
+
+
+# --- The automatic nudge (inside Meta's 24 hour window) -----------------------
+
+from dataclasses import replace  # noqa: E402
+
+from app.messenger.api import SendResult  # noqa: E402
+from app.messenger.followups import _evaluate_nudge, run_nudges  # noqa: E402
+
+# 2026-10-21 15:00 UTC is 11:00 in New York: inside business hours.
+NUDGE_NOW = datetime(2026, 10, 21, 15, 0, 0)
+
+
+def _nudge_convo(hours_quiet: float, hours_since_customer: float | None = None, **kw) -> dict:
+    since = hours_since_customer if hours_since_customer is not None else hours_quiet + 0.03
+    def stamp(hours):
+        return (NUDGE_NOW - timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%S+0000")
+    convo = _conversation([
+        {"message": "What city is the property in?", "from": {"id": settings.fb_page_id}, "created_time": stamp(hours_quiet)},
+        {"message": "I want to sell my house", "from": {"id": "user_1"}, "created_time": stamp(since)},
+    ], **kw)
+    return convo
+
+
+def _on(monkeypatch, **over):
+    monkeypatch.setattr(followups, "settings", replace(settings, nudge_enabled=True, autoreply_enabled=True, **over))
+
+
+def test_someone_quiet_for_20_hours_is_nudged(monkeypatch):
+    _on(monkeypatch)
+    n = _evaluate_nudge(_nudge_convo(21), NUDGE_NOW)
+    assert n is not None
+    assert n.text == "Hi Dejon, we wanted to follow up. Do you have any questions?"
+
+
+@pytest.mark.parametrize("hours", [3, 19.9])
+def test_not_nudged_too_soon(monkeypatch, hours):
+    _on(monkeypatch)
+    assert _evaluate_nudge(_nudge_convo(hours), NUDGE_NOW) is None
+
+
+def test_never_nudged_once_metas_24_hour_window_is_nearly_over(monkeypatch):
+    _on(monkeypatch)
+    assert _evaluate_nudge(_nudge_convo(23.6), NUDGE_NOW) is None
+    assert _evaluate_nudge(_nudge_convo(26), NUDGE_NOW) is None
+
+
+def test_the_window_is_counted_from_the_customers_last_message(monkeypatch):
+    """Our reply can come minutes after theirs; Meta counts from theirs."""
+    _on(monkeypatch)
+    assert _evaluate_nudge(_nudge_convo(21, hours_since_customer=23.7), NUDGE_NOW) is None
+
+
+def test_the_hours_before_a_nudge_are_a_setting(monkeypatch):
+    _on(monkeypatch, nudge_after_hours=2.0)
+    assert _evaluate_nudge(_nudge_convo(2.5), NUDGE_NOW) is not None
+
+
+def test_a_nudge_is_never_sent_twice(monkeypatch):
+    _on(monkeypatch)
+    convo = _nudge_convo(21)
+    convo["messages"]["data"].insert(0, _msg("Hi Dejon, we wanted to follow up.", True, 0.1))
+    assert _evaluate_nudge(convo, NUDGE_NOW) is None
+
+
+def _run(monkeypatch, convos, now=NUDGE_NOW, **over):
+    _on(monkeypatch, **over)
+    sent = []
+    monkeypatch.setattr(followups, "_conversations", lambda: convos)
+    monkeypatch.setattr(
+        followups, "send_text",
+        lambda psid, text, quick_replies=None, messaging_type="RESPONSE": sent.append((psid, text, messaging_type)) or SendResult(True, "m"),
+    )
+    return run_nudges(now), sent
+
+
+def test_run_sends_the_clients_message_as_an_update_inside_the_window(monkeypatch):
+    summary, sent = _run(monkeypatch, [_nudge_convo(21)])
+    assert summary["sent"] == 1 and summary["failed"] == 0
+    assert sent == [("user_1", "Hi Dejon, we wanted to follow up. Do you have any questions?", "UPDATE")]
+
+
+def test_run_does_nothing_unless_switched_on(monkeypatch):
+    monkeypatch.setattr(followups, "settings", replace(settings, nudge_enabled=False, autoreply_enabled=True))
+    monkeypatch.setattr(followups, "_conversations", lambda: [_nudge_convo(21)])
+    assert run_nudges(NUDGE_NOW)["skipped"] == "nudges are switched off"
+    monkeypatch.setattr(followups, "settings", replace(settings, nudge_enabled=True, autoreply_enabled=False))
+    assert run_nudges(NUDGE_NOW)["skipped"] == "nudges are switched off"
+
+
+def test_run_waits_for_business_hours(monkeypatch):
+    night = datetime(2026, 10, 21, 5, 0, 0)  # 01:00 in New York
+    summary, sent = _run(monkeypatch, [_nudge_convo(21)], now=night)
+    assert summary["skipped"] == "outside business hours" and sent == []
+
+
+def test_dry_run_reports_without_sending(monkeypatch):
+    _on(monkeypatch)
+    monkeypatch.setattr(followups, "_conversations", lambda: [_nudge_convo(21)])
+    boom = lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not send"))
+    monkeypatch.setattr(followups, "send_text", boom)
+    summary = run_nudges(NUDGE_NOW, dry_run=True)
+    assert summary["due"] == 1 and len(summary["would_send"]) == 1 and summary["sent"] == 0
+
+
+def test_a_failed_send_is_counted_and_does_not_stop_the_others(monkeypatch):
+    _on(monkeypatch)
+    results = iter([SendResult(False, error="boom"), SendResult(True, "m")])
+    monkeypatch.setattr(followups, "_conversations", lambda: [_nudge_convo(21, psid="a"), _nudge_convo(22, psid="b")])
+    monkeypatch.setattr(followups, "send_text", lambda *a, **k: next(results))
+    summary = run_nudges(NUDGE_NOW)
+    assert summary["failed"] == 1 and summary["sent"] == 1
+
+
+def test_one_run_never_sends_more_than_the_safety_limit(monkeypatch):
+    convos = [_nudge_convo(21, psid=f"u{i}") for i in range(30)]
+    summary, sent = _run(monkeypatch, convos)
+    assert len(sent) == followups.NUDGE_MAX_PER_RUN == 20
+
+
+def test_the_timer_endpoint_needs_its_own_key(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from app.messenger import webhook
+
+    monkeypatch.setattr(webhook, "settings", replace(settings, nudge_key="secret-key", nudge_enabled=False))
+    client = TestClient(webhook.create_app())
+    assert client.get("/run-nudges", params={"key": "wrong"}).status_code == 403
+    assert client.get("/run-nudges", params={"key": settings.fb_verify_token}).status_code == 403
+    ok = client.get("/run-nudges", params={"key": "secret-key"})
+    assert ok.status_code == 200 and ok.json()["skipped"] == "nudges are switched off"
+
+
+def test_with_no_key_configured_the_endpoint_is_closed(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from app.messenger import webhook
+
+    monkeypatch.setattr(webhook, "settings", replace(settings, nudge_key=""))
+    client = TestClient(webhook.create_app())
+    assert client.get("/run-nudges", params={"key": ""}).status_code == 403
