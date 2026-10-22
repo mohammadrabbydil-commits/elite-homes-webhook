@@ -623,6 +623,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
+    # Customer names can be in any script; never crash a Windows console printing one.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(errors="replace")
     args = build_parser().parse_args()
     configure_logging(args.log_level)
     return args.func(args)
